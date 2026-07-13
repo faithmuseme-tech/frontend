@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Generate PNG icons and favicon from SVG
-        run: npm install --no-save sharp png-to-ico && node scripts/generate-icons.js
+        run: npm install --no-save sharp && node scripts/generate-icons.js
 
       - name: Build
         env:
