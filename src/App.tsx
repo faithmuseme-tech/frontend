@@ -7,7 +7,7 @@ import AppRoutes from "./routes/AppRoutes";
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/frontend">
       <AuthProvider>
         <CartProvider>
           <WishlistProvider>
