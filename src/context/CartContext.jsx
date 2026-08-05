@@ -43,6 +43,7 @@ const normalizeItems = (backendItems) =>
     image: toAbsolute(item.product.primary_image),
     brand: item.product.brand_name,
     qty: item.quantity,
+    selected_options: item.selected_options || {},
   }));
 
 export const CartProvider = ({ children }) => {
@@ -65,8 +66,11 @@ export const CartProvider = ({ children }) => {
     dispatch({ type: "ADD_ITEM", payload: product });
     if (authService.isAuthenticated()) {
       try {
-        const res = await api.post("/cart/", { product_id: product.id, quantity: 1 });
-        dispatch({ type: "SET", payload: normalizeItems(res.data.items) });
+        const res = await api.post("/cart/", { product_id: product.id, quantity: 1, selected_options: product.selected_options || {} });
+        const normalized = normalizeItems(res.data.items);
+        // Backend always returns primary_image — restore the chosen image for this product
+        const patched = normalized.map(i => i.id === product.id ? { ...i, image: product.image } : i);
+        dispatch({ type: "SET", payload: patched });
       } catch { /* keep local */ }
     }
   };

@@ -1,33 +1,95 @@
-import React, { Suspense, lazy } from "react";
-import { Routes, Route } from "react-router-dom";
+import React, { Suspense, lazy, Component, useEffect } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import TraderLayout from "../layouts/TraderLayout";
 
-const Home = lazy(() => import("../pages/Home/Home"));
-const Shop = lazy(() => import("../pages/Shop/Shop"));
-const ProductPage = lazy(() => import("../pages/Product/ProductPage"));
-const CartPage = lazy(() => import("../pages/Cart/CartPage"));
-const CheckoutPage = lazy(() => import("../pages/Checkout/CheckoutPage"));
-const LoginPage = lazy(() => import("../pages/Login/LoginPage"));
-const RegisterPage = lazy(() => import("../pages/Register/RegisterPage"));
-const SuccessPage = lazy(() => import("../pages/Success/SuccessPage"));
-const TraderRegisterPage = lazy(() => import("../pages/Trader/TraderRegisterPage"));
-const TraderOverview = lazy(() => import("../pages/Trader/Dashboard/TraderOverview"));
-const TraderProducts = lazy(() => import("../pages/Trader/Dashboard/TraderProducts"));
-const TraderProductForm = lazy(() => import("../pages/Trader/Dashboard/TraderProductForm"));
-const TraderProfilePage = lazy(() => import("../pages/Trader/Dashboard/TraderProfilePage"));
-const AdminLayout = lazy(() => import("../layouts/AdminLayout"));
-const AdminOverview = lazy(() => import("../pages/Admin/Dashboard/AdminOverview"));
-const AdminUsers = lazy(() => import("../pages/Admin/Dashboard/AdminUsers"));
-const AdminTraders = lazy(() => import("../pages/Admin/Dashboard/AdminTraders"));
-const AdminOrders = lazy(() => import("../pages/Admin/Dashboard/AdminOrders"));
-const AdminProducts = lazy(() => import("../pages/Admin/Dashboard/AdminProducts"));
-const AdminCategories = lazy(() => import("../pages/Admin/Dashboard/AdminCategories"));
-const OrdersPage = lazy(() => import("../pages/Orders/OrdersPage"));
-const LocationPage = lazy(() => import("../pages/Location/LocationPage"));
-const PaymentMethodPage = lazy(() => import("../pages/PaymentMethod/PaymentMethodPage"));
-const SearchPage = lazy(() => import("../pages/Search/SearchPage"));
-const NotFound = lazy(() => import("../pages/NotFound/NotFound"));
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [pathname]);
+  return null;
+};
+
+// Retry lazy import once on ChunkLoadError (stale deploy on GitHub Pages)
+const lazyWithRetry = (importFn) =>
+  lazy(() =>
+    importFn().catch((err) => {
+      const isChunkError =
+        err?.name === "ChunkLoadError" ||
+        /Loading chunk \d+ failed/i.test(err?.message || "");
+      if (isChunkError && !sessionStorage.getItem("chunk_reloaded")) {
+        sessionStorage.setItem("chunk_reloaded", "1");
+        window.location.href = '/frontend/';
+        return new Promise(() => {});
+      }
+      sessionStorage.removeItem("chunk_reloaded");
+      throw err;
+    })
+  );
+
+class ChunkErrorBoundary extends Component {
+  state = { crashed: false };
+  static getDerivedStateFromError() { return { crashed: true }; }
+  componentDidCatch(err) {
+    const isChunkError =
+      err?.name === "ChunkLoadError" ||
+      /Loading chunk \d+ failed/i.test(err?.message || "");
+    if (isChunkError && !sessionStorage.getItem("chunk_reloaded")) {
+      sessionStorage.setItem("chunk_reloaded", "1");
+      window.location.href = '/frontend/';
+    }
+  }
+  render() {
+    if (this.state.crashed) return null;
+    return this.props.children;
+  }
+}
+
+const Home               = lazyWithRetry(() => import("../pages/Home/Home"));
+const Shop               = lazyWithRetry(() => import("../pages/Shop/Shop"));
+const ProductPage        = lazyWithRetry(() => import("../pages/Product/ProductPage"));
+const CartPage           = lazyWithRetry(() => import("../pages/Cart/CartPage"));
+const CheckoutPage       = lazyWithRetry(() => import("../pages/Checkout/CheckoutPage"));
+const LoginPage          = lazyWithRetry(() => import("../pages/Login/LoginPage"));
+const RegisterPage       = lazyWithRetry(() => import("../pages/Register/RegisterPage"));
+const SuccessPage        = lazyWithRetry(() => import("../pages/Success/SuccessPage"));
+const TraderRegisterPage = lazyWithRetry(() => import("../pages/Trader/TraderRegisterPage"));
+const TraderOverview     = lazyWithRetry(() => import("../pages/Trader/Dashboard/TraderOverview"));
+const TraderProducts     = lazyWithRetry(() => import("../pages/Trader/Dashboard/TraderProducts"));
+const TraderProductForm  = lazyWithRetry(() => import("../pages/Trader/Dashboard/TraderProductForm"));
+const TraderProfilePage  = lazyWithRetry(() => import("../pages/Trader/Dashboard/TraderProfilePage"));
+const TraderFlashDeals   = lazyWithRetry(() => import("../pages/Trader/Dashboard/TraderFlashDeals"));
+const TraderOrders       = lazyWithRetry(() => import("../pages/Trader/Dashboard/TraderOrders"));
+const TraderChat         = lazyWithRetry(() => import("../pages/Trader/Dashboard/TraderChat"));
+const AdminLayout        = lazyWithRetry(() => import("../layouts/AdminLayout"));
+const AdminOverview      = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminOverview"));
+const AdminUsers         = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminUsers"));
+const AdminTraders       = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminTraders"));
+const AdminOrders        = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminOrders"));
+const AdminProducts      = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminProducts"));
+const AdminCategories    = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminCategories"));
+const AdminBrands        = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminBrands"));
+const OrdersPage         = lazyWithRetry(() => import("../pages/Orders/OrdersPage"));
+const LocationPage       = lazyWithRetry(() => import("../pages/Location/LocationPage"));
+const PaymentMethodPage  = lazyWithRetry(() => import("../pages/PaymentMethod/PaymentMethodPage"));
+const SearchPage         = lazyWithRetry(() => import("../pages/Search/SearchPage"));
+const WishlistPage       = lazyWithRetry(() => import("../pages/Wishlist/WishlistPage"));
+const CategoriesPage     = lazyWithRetry(() => import("../pages/Categories/CategoriesPage"));
+const CategoryDetailPage = lazyWithRetry(() => import("../pages/Categories/CategoryDetailPage"));
+const BrandsPage         = lazyWithRetry(() => import("../pages/Brands/BrandsPage"));
+const BrandDetailPage    = lazyWithRetry(() => import("../pages/Brands/BrandDetailPage"));
+const InboxPage          = lazyWithRetry(() => import("../pages/Dashboard/InboxPage"));
+const ChatPage           = lazyWithRetry(() => import("../pages/Dashboard/ChatPage"));
+const AdminChat          = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminChat"));
+const NotFound           = lazyWithRetry(() => import("../pages/NotFound/NotFound"));
+const AboutPage          = lazyWithRetry(() => import("../pages/About/AboutPage"));
+const ContactPage        = lazyWithRetry(() => import("../pages/Contact/ContactPage"));
+const ShippingPage       = lazyWithRetry(() => import("../pages/Shipping/ShippingPage"));
+const ReturnsPage        = lazyWithRetry(() => import("../pages/Returns/ReturnsPage"));
+const FAQsPage           = lazyWithRetry(() => import("../pages/FAQs/FAQsPage"));
+const HowToPayPage       = lazyWithRetry(() => import("../pages/HowToPay/HowToPayPage"));
+const PrivacyPage        = lazyWithRetry(() => import("../pages/Privacy/PrivacyPage"));
+const TermsPage          = lazyWithRetry(() => import("../pages/Terms/TermsPage"));
+const NewArrivalsPage    = lazyWithRetry(() => import("../pages/NewArrivals/NewArrivalsPage"));
 
 const Loader = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
@@ -36,7 +98,9 @@ const Loader = () => (
 );
 
 const AppRoutes = () => (
-  <Suspense fallback={<Loader />}>
+  <ChunkErrorBoundary>
+    <Suspense fallback={<Loader />}>
+    <ScrollToTop />
     <Routes>
       {/* Main store */}
       <Route element={<MainLayout />}>
@@ -50,9 +114,25 @@ const AppRoutes = () => (
         <Route path="/success" element={<SuccessPage />} />
         <Route path="/trader/register" element={<TraderRegisterPage />} />
         <Route path="/search" element={<SearchPage />} />
+        <Route path="/wishlist" element={<WishlistPage />} />
+        <Route path="/categories" element={<CategoriesPage />} />
+        <Route path="/categories/:slug" element={<CategoryDetailPage />} />
+        <Route path="/brands" element={<BrandsPage />} />
+        <Route path="/brands/:slug" element={<BrandDetailPage />} />
+        <Route path="/inbox" element={<InboxPage />} />
+        <Route path="/chat" element={<ChatPage />} />
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/profile/location" element={<LocationPage />} />
         <Route path="/profile/payment" element={<PaymentMethodPage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/shipping" element={<ShippingPage />} />
+        <Route path="/returns" element={<ReturnsPage />} />
+        <Route path="/faqs" element={<FAQsPage />} />
+        <Route path="/how-to-pay" element={<HowToPayPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/new-arrivals" element={<NewArrivalsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
 
@@ -63,6 +143,9 @@ const AppRoutes = () => (
         <Route path="add-product" element={<TraderProductForm />} />
         <Route path="products/:id/edit" element={<TraderProductForm />} />
         <Route path="profile" element={<TraderProfilePage />} />
+        <Route path="flash-deals" element={<TraderFlashDeals />} />
+        <Route path="orders" element={<TraderOrders />} />
+        <Route path="chat" element={<TraderChat />} />
       </Route>
 
       {/* Admin dashboard */}
@@ -73,9 +156,12 @@ const AppRoutes = () => (
         <Route path="orders" element={<AdminOrders />} />
         <Route path="products" element={<AdminProducts />} />
         <Route path="categories" element={<AdminCategories />} />
+        <Route path="brands" element={<AdminBrands />} />
+        <Route path="chat" element={<AdminChat />} />
       </Route>
     </Routes>
-  </Suspense>
+    </Suspense>
+  </ChunkErrorBoundary>
 );
 
 export default AppRoutes;

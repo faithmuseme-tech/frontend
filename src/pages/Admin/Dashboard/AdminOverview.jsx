@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import adminService from "../../../services/adminService";
-import { FiUsers, FiBriefcase, FiShoppingBag, FiPackage, FiDollarSign, FiClock } from "react-icons/fi";
+import { FiUsers, FiBriefcase, FiShoppingBag, FiPackage, FiDollarSign, FiClock, FiShoppingBag as FiSell } from "react-icons/fi";
 import { formatUGX } from "../../../utils/currency";
 
 const StatCard = ({ icon, label, value, color, to }) => (
@@ -17,13 +17,27 @@ const StatCard = ({ icon, label, value, color, to }) => (
 const AdminOverview = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sellerOpen, setSellerOpen] = useState(true);
+  const [toggling, setToggling] = useState(false);
 
   useEffect(() => {
     adminService.getStats()
       .then((r) => setStats(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
+    adminService.getSettings()
+      .then((r) => setSellerOpen(r.data.seller_registration_open))
+      .catch(() => {});
   }, []);
+
+  const toggleSeller = async () => {
+    setToggling(true);
+    try {
+      const res = await adminService.updateSettings({ seller_registration_open: !sellerOpen });
+      setSellerOpen(res.data.seller_registration_open);
+    } catch {}
+    finally { setToggling(false); }
+  };
 
   const cards = stats ? [
     { icon: <FiUsers />, label: "Total Customers", value: stats.total_users, color: "bg-blue-50 text-blue-600", to: "/admin/dashboard/users" },
@@ -63,6 +77,27 @@ const AdminOverview = () => {
             <Link to="/admin/dashboard/orders" className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-all">
               <FiShoppingBag /> Manage Orders
             </Link>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 p-6">
+          <p className="font-bold text-gray-800 mb-1">Seller Registration</p>
+          <p className="text-xs text-gray-400 mb-4">Control whether the "Sell with CartPulse" option is visible to the public.</p>
+          <div className="flex items-center justify-between">
+            <span className={`text-sm font-semibold ${sellerOpen ? "text-emerald-600" : "text-red-500"}`}>
+              {sellerOpen ? "Open — anyone can apply" : "Closed — hidden from public"}
+            </span>
+            <button
+              onClick={toggleSeller}
+              disabled={toggling}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                sellerOpen ? "bg-emerald-500" : "bg-gray-300"
+              }`}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                sellerOpen ? "translate-x-6" : "translate-x-1"
+              }`} />
+            </button>
           </div>
         </div>
       </div>

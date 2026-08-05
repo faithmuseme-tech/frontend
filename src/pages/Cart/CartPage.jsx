@@ -3,13 +3,49 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiTrash2, FiMinus, FiPlus, FiShoppingBag,
-  FiArrowLeft, FiArrowRight, FiTag, FiTruck,
-  FiShield, FiRefreshCw, FiChevronRight,
+  FiArrowLeft, FiArrowRight, FiTag,
+  FiShield, FiChevronRight,
 } from "react-icons/fi";
+import { Truck, Package, Calendar } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import { formatUGX } from "../../utils/currency";
 
-const UPCOUNTRY_FEE = 8000; // per item, Fort Portal / upcountry estimate
+// Delivery fee rules:
+// 1 product line  → UGX 10,000 × qty
+// 2+ product lines → UGX 5,000 × qty  (all regions)
+const SINGLE_FEE = 10000;
+const MULTI_FEE  = 5000;
+
+const DELIVERY_CAP = 90_000;
+
+const getTotalQty = (items = []) => items.reduce((sum, i) => sum + (i.qty || 1), 0);
+
+const getDeliveryFee = (items = []) => {
+  const totalQty = getTotalQty(items);
+  if (totalQty <= 1) return SINGLE_FEE;
+  const unitsAtNormal = Math.min(totalQty, Math.floor(DELIVERY_CAP / MULTI_FEE));
+  const unitsDiscounted = totalQty - unitsAtNormal;
+  return unitsAtNormal * MULTI_FEE + unitsDiscounted * 4_500;
+};
+
+const getFeePerItem = (items = []) => {
+  const totalQty = getTotalQty(items);
+  if (totalQty <= 1) return SINGLE_FEE;
+  return MULTI_FEE * totalQty > DELIVERY_CAP ? 4_500 : MULTI_FEE;
+};
+
+const getDeliveryDate = () => {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 6=Sat
+  const hour = now.getHours();
+  // Saturday after noon → skip Sunday, add 3 days
+  let daysAhead = (day === 6 && hour >= 12) ? 3 : 2;
+  const d = new Date(now);
+  d.setDate(d.getDate() + daysAhead);
+  // Never land on Sunday (0)
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  return d.toLocaleDateString('en-UG', { weekday: 'long', month: 'short', day: 'numeric' });
+};
 
 const CartPage = () => {
   const { items, removeItem, updateQty, clearCart, totalPrice } = useCart();
@@ -20,7 +56,8 @@ const CartPage = () => {
   const [removing, setRemoving] = useState(null);
 
   const totalQty = items.reduce((s, i) => s + i.qty, 0);
-  const shipping = items.reduce((sum, i) => sum + UPCOUNTRY_FEE * i.qty, 0);
+  const feePerItem = getFeePerItem(items);
+  const shipping = getDeliveryFee(items);
   const grandTotal = totalPrice - discount + shipping;
 
   const handleRemove = (id) => {
@@ -92,12 +129,21 @@ const CartPage = () => {
           </button>
         </div>
 
-        {/* ── Shipping estimate notice ──────────────────────────────────── */}
-        <div className="bg-blue-50 border border-blue-100 rounded-2xl px-5 py-3.5 mb-6 flex items-center gap-3">
-          <FiTruck className="text-blue-500 text-xl flex-shrink-0" />
-          <p className="text-xs text-gray-600">
-            Shipping estimated at <span className="font-bold text-blue-600">UGX {UPCOUNTRY_FEE.toLocaleString()}/item</span> (upcountry rate). Select your district at checkout for the exact fee.
-          </p>
+                {/* ── Delivery notice ───────────────────────────────────────────── */}
+        <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-3.5 mb-6 flex items-start gap-3">
+          <Package size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-green-800 flex items-center gap-1.5">
+              <Calendar size={14} className="text-green-600" />
+              Order today and get it delivered by {getDeliveryDate()}
+            </p>
+            <p className="text-xs text-gray-600 mt-0.5">
+              {items.length === 1 && items[0].qty === 1
+                ? <><span className="font-semibold text-gray-800">{formatUGX(SINGLE_FEE)}</span> per product — order more than 1 to save!</>
+                : <><span className="font-semibold text-gray-800">{formatUGX(MULTI_FEE)}</span> per product (multi-item discount applied) — all regions</>
+              }
+            </p>
+          </div>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -147,6 +193,15 @@ const CartPage = () => {
                         >
                           {item.name}
                         </Link>
+                        {item.selected_options && Object.keys(item.selected_options).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {Object.entries(item.selected_options).map(([k, v]) => (
+                              <span key={k} className="text-xs bg-primary-50 text-primary-700 border border-primary-100 px-2 py-0.5 rounded-full font-medium capitalize">
+                                {k.replace('_', ' ')}: {v}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {/* Mobile-only price */}
                         <p className="sm:hidden text-sm font-extrabold text-gray-900 mt-1">{formatUGX(item.price)}</p>
                         {/* Remove link */}
@@ -266,10 +321,16 @@ const CartPage = () => {
                   </div>
                 )}
 
-                <div className="flex justify-between text-gray-600">
-                  <span className="flex items-center gap-1.5"><FiTruck className="text-gray-400" /> Shipping <span className="text-xs text-gray-400">(est.)</span></span>
+                                <div className="flex justify-between text-gray-600">
+                  <span className="flex items-center gap-1.5">
+                    <Truck size={13} className="text-gray-400" /> Delivery
+                  </span>
                   <span className="font-semibold text-gray-800">{formatUGX(shipping)}</span>
                 </div>
+                <p className="text-xs text-blue-600 -mt-1">
+                  {formatUGX(feePerItem)}/product × {totalQty} item{totalQty !== 1 ? "s" : ""}
+                  {items.length === 1 ? " — order more than 1 to get 5,000/product" : " — multi-item rate"}
+                </p>
 
                 <div className="flex justify-between text-gray-600">
                   <span className="flex items-center gap-1.5"><FiShield className="text-gray-400" /> Tax (0%)</span>
@@ -289,11 +350,10 @@ const CartPage = () => {
                 Proceed to Checkout <FiArrowRight />
               </button>
 
-              <div className="mt-4 grid grid-cols-3 divide-x divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
+              <div className="mt-4 grid grid-cols-2 divide-x divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
                 {[
-                  { icon: <FiShield />, label: "Secure Pay" },
-                  { icon: <FiTruck />, label: "Fast Ship" },
-                  { icon: <FiRefreshCw />, label: "30-day Return" },
+                  { icon: <FiShield />, label: "Verified Seller" },
+                  { icon: <Truck size={14} />, label: "2-Day Delivery" },
                 ].map((b) => (
                   <div key={b.label} className="flex flex-col items-center gap-1 py-3 text-center bg-gray-50">
                     <span className="text-primary-500 text-base">{b.icon}</span>
@@ -305,18 +365,13 @@ const CartPage = () => {
 
             {/* Payment methods */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs text-gray-400 text-center mb-3 font-bold uppercase tracking-wider">Accepted Payments</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { name: "Visa", color: "bg-blue-50 text-blue-700 border-blue-100" },
-                  { name: "Mastercard", color: "bg-red-50 text-red-700 border-red-100" },
-                  { name: "MTN MoMo", color: "bg-yellow-50 text-yellow-700 border-yellow-100" },
-                  { name: "Airtel Money", color: "bg-red-50 text-red-600 border-red-100" },
-                ].map((m) => (
-                  <div key={m.name} className={`text-xs font-bold px-3 py-2 rounded-xl border text-center ${m.color}`}>
-                    {m.name}
-                  </div>
-                ))}
+              <p className="text-xs text-gray-400 text-center mb-3 font-bold uppercase tracking-wider">We Accept</p>
+              <div className="flex items-center justify-center gap-2 bg-yellow-50 border border-yellow-100 text-yellow-700 text-xs font-bold px-3 py-2.5 rounded-xl">
+                <svg viewBox="0 0 28 28" className="w-5 h-5 flex-shrink-0" fill="none">
+                  <circle cx="14" cy="14" r="14" fill="#FFCC00"/>
+                  <text x="50%" y="56%" dominantBaseline="middle" textAnchor="middle" fontSize="7" fontWeight="bold" fill="#1a1a1a">MTN</text>
+                </svg>
+                MTN Mobile Money
               </div>
             </div>
           </div>

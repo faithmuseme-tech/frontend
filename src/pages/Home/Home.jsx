@@ -8,20 +8,18 @@ import CategoryCard from "../../components/CategoryCard/CategoryCard";
 import ProductCard from "../../components/ProductCard/ProductCard";
 import FlashDeals from "../../components/Banner/FlashDeals";
 import BrandCard from "../../components/ProductCard/BrandCard";
-import FeatureCard from "../../components/ProductCard/FeatureCard";
 import TestimonialCard from "../../components/ProductCard/TestimonialCard";
 import Newsletter from "../../components/Banner/Newsletter";
 import PromoBanner from "../../components/Banner/PromoBanner";
+import AdvertisementBanner from "../../components/Banner/AdvertisementBanner";
 
 import productService from "../../services/productService";
 import {
   categories as mockCategories,
   featuredProducts as mockFeatured,
   brands as mockBrands,
-  features,
 } from "../../utils/data";
 
-// Skeleton loader for product grids
 const ProductSkeleton = () => (
   <div className="card overflow-hidden animate-pulse">
     <div className="aspect-square bg-gray-200 rounded-t-2xl" />
@@ -34,7 +32,6 @@ const ProductSkeleton = () => (
   </div>
 );
 
-// Section wrapper
 const Section = ({ title, subtitle, to, toLabel = "View All", children, dark = false }) => (
   <section className={`py-14 ${dark ? "bg-gray-50" : "bg-white"}`}>
     <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -61,7 +58,6 @@ const Section = ({ title, subtitle, to, toLabel = "View All", children, dark = f
   </section>
 );
 
-// Testimonials carousel
 const FALLBACK_AVATAR = "https://ui-avatars.com/api/?background=random&size=80&name=";
 
 const TestimonialsSection = () => {
@@ -76,10 +72,12 @@ const TestimonialsSection = () => {
         const items = (Array.isArray(data) ? data : data.results || []).map((r) => ({
           id: r.id,
           name: r.user_name,
-          role: r.product_name,
           avatar: r.user_avatar || `${FALLBACK_AVATAR}${encodeURIComponent(r.user_name)}`,
           rating: r.rating,
           text: r.body,
+          productName: r.product_name,
+          productImage: r.product_image,
+          productSlug: r.product_slug,
         }));
         if (items.length) setReviews(items);
       })
@@ -124,14 +122,36 @@ const TestimonialsSection = () => {
   );
 };
 
-// Hook to fetch with fallback
-const useApiData = (fetchFn, fallback) => {
+const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
+const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+
+const normalizeProduct = (p) => ({
+  id: p.id,
+  name: p.name,
+  slug: p.slug,
+  brand: p.brand_name || p.brand?.name || "",
+  category: p.category_name || p.category?.name || "",
+  price: parseFloat(p.price),
+  originalPrice: p.original_price ? parseFloat(p.original_price) : null,
+  deliveryCharge: p.delivery_charge !== undefined ? parseFloat(p.delivery_charge) : 0,
+  discount: p.discount || 0,
+  image: toAbsolute(p.primary_image),
+  inStock: p.in_stock,
+  badge: p.badge || "",
+  rating: p.avg_rating || 0,
+  reviews: p.review_count || 0,
+});
+
+const useApiData = (fetchFn, fallback, normalize = true) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchFn()
-      .then((res) => setData(res.data.results || res.data))
+      .then((res) => {
+        const list = res.data.results || res.data;
+        setData(Array.isArray(list) ? (normalize ? list.map(normalizeProduct) : list) : list);
+      })
       .catch(() => setData(fallback))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -140,28 +160,76 @@ const useApiData = (fetchFn, fallback) => {
   return { data: data || fallback, loading };
 };
 
-const Home = () => {
-  const { data: categories, loading: catLoading } = useApiData(productService.getCategories, mockCategories);
-  const { data: featured, loading: featLoading } = useApiData(productService.getFeatured, mockFeatured);
-  const { data: newArrivals, loading: newLoading } = useApiData(productService.getNewArrivals, mockFeatured.slice(0, 6));
-  const { data: bestSellers, loading: bsLoading } = useApiData(productService.getBestSellers, [...mockFeatured].reverse().slice(0, 4));
-  const { data: brands, loading: brandsLoading } = useApiData(productService.getBrands, mockBrands);
+// Clothing keywords — these products are excluded from "Latest Products"
+const CLOTHES_KEYWORDS = ["cloth", "fashion", "wear", "shirt", "dress", "trouser", "jean", "shoe", "sneaker", "boot", "jacket", "skirt", "blouse", "apparel", "outfit"];
+const isClothing = (p) => CLOTHES_KEYWORDS.some((k) =>
+  (p.category || "").toLowerCase().includes(k) || (p.name || "").toLowerCase().includes(k)
+);
 
-  const renderProductGrid = (items, loading, cols = "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4") => (
-    <div className={`grid ${cols} gap-4 md:gap-5`}>
+const dedup = (pool, usedIds) => pool.filter((p) => !usedIds.has(p.id));
+
+const Home = () => {
+  const { data: categories,  loading: catLoading }    = useApiData(productService.getCategories, mockCategories, false);
+  const { data: featured,    loading: featLoading }   = useApiData(productService.getFeatured, mockFeatured);
+  const { data: newArrivals, loading: newLoading }    = useApiData(productService.getDiverseNewArrivals, mockFeatured.slice(0, 8));
+  const { data: bestSellers, loading: bsLoading }     = useApiData(productService.getBestSellers, [...mockFeatured].reverse().slice(0, 4));
+  const { data: brands,      loading: brandsLoading } = useApiData(productService.getBrands, mockBrands, false);
+  const { data: recommended, loading: recLoading }    = useApiData(productService.getRecommended, mockFeatured.slice(0, 8));
+
+  // ── Deduplicated sections ──────────────────────────────────────────────────
+  const usedIds = new Set();
+
+  // Global pool for padding — all unique products across all fetched lists
+  const allProducts = [...newArrivals, ...featured, ...recommended, ...bestSellers]
+    .filter((p, i, arr) => arr.findIndex((x) => x.id === p.id) === i);
+
+  const fill = (section, size = 8) => {
+    if (section.length >= size) return section.slice(0, size);
+    const pad = dedup(allProducts, new Set(section.map((p) => p.id)))
+      .filter((p) => !usedIds.has(p.id));
+    return [...section, ...pad].slice(0, size);
+  };
+
+  // 1. Latest Products — no clothing, from new arrivals, padded from global pool
+  const latestRaw = dedup(newArrivals.filter((p) => !isClothing(p)), usedIds);
+  const latest = fill(latestRaw);
+  latest.forEach((p) => usedIds.add(p.id));
+
+  // 2. Featured — exclude already shown, padded
+  const featuredSection = fill(dedup(featured, usedIds));
+  featuredSection.forEach((p) => usedIds.add(p.id));
+
+  // 3. New Arrivals scroll row — clothing allowed, exclude already shown, padded
+  const newArrivalsSection = fill(dedup(newArrivals, usedIds));
+  newArrivalsSection.forEach((p) => usedIds.add(p.id));
+
+  // 4. Recommended — exclude already shown, padded
+  const recommendedSection = fill(dedup(recommended, usedIds));
+  recommendedSection.forEach((p) => usedIds.add(p.id));
+
+  // 5. Best Sellers — exclude already shown, padded
+  const bestSellersSection = fill(dedup([...bestSellers, ...allProducts], usedIds));
+
+  const renderGrid = (items, loading, eager = false) => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
       {loading
         ? Array(8).fill(0).map((_, i) => <ProductSkeleton key={i} />)
-        : items.map((p) => <ProductCard key={p.id} product={p} />)
+        : items.map((p, i) => <ProductCard key={p.id} product={p} eager={eager && i < 4} />)
       }
     </div>
   );
 
   return (
     <>
-      <Hero />
+      {/* Latest Products — no clothing */}
+      <Section title="Latest Products" subtitle="Fresh arrivals you don't want to miss" to="/new-arrivals">
+        {renderGrid(latest, newLoading, true)}
+      </Section>
+
+      <AdvertisementBanner />
 
       {/* Categories */}
-      <Section title="Shop by Category" subtitle="Browse our wide selection of electronics categories" to="/categories" dark>
+      <Section title="Shop by Category" subtitle="Browse our wide selection of categories" to="/categories" dark>
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 md:gap-4">
           {catLoading
             ? Array(12).fill(0).map((_, i) => <div key={i} className="card p-5 aspect-square animate-pulse bg-gray-100" />)
@@ -171,37 +239,37 @@ const Home = () => {
       </Section>
 
       {/* Featured Products */}
-      <Section title="Featured Products" subtitle="Handpicked top electronics just for you" to="/shop">
-        {renderProductGrid(featured, featLoading)}
+      <Section title="Featured Products" subtitle="Handpicked top products just for you" to="/shop">
+        {renderGrid(featuredSection, featLoading)}
       </Section>
 
-      {/* Flash Deals */}
       <FlashDeals />
 
-      {/* New Arrivals */}
-      <Section title="New Arrivals" subtitle="The freshest tech just landed" to="/new-arrivals" dark>
-        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
+      {/* New Arrivals — grid, clothing included */}
+      <Section title="New Arrivals" subtitle="The freshest items just landed" to="/new-arrivals" dark>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
           {newLoading
-            ? Array(6).fill(0).map((_, i) => <div key={i} className="flex-shrink-0 w-56 sm:w-64"><ProductSkeleton /></div>)
-            : newArrivals.map((p) => (
-                <div key={p.id} className="flex-shrink-0 w-56 sm:w-64">
-                  <ProductCard product={p} />
-                </div>
-              ))
+            ? Array(8).fill(0).map((_, i) => <ProductSkeleton key={i} />)
+            : newArrivalsSection.map((p) => <ProductCard key={p.id} product={p} />)
           }
         </div>
       </Section>
 
-      {/* Best Sellers */}
-      <Section title="Best Sellers" subtitle="Most loved by our customers" to="/shop?sort=best-selling">
-        {renderProductGrid(bestSellers, bsLoading, "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4")}
+      {/* Recommended for You */}
+      <Section title="Recommended for You" subtitle="Based on your browsing" to="/shop">
+        {renderGrid(recommendedSection, recLoading)}
       </Section>
 
-      {/* Promo Banners */}
+      {/* Best Sellers */}
+      <Section title="Best Sellers" subtitle="Most loved by our customers" to="/shop?sort=best-selling" dark>
+        {renderGrid(bestSellersSection, bsLoading)}
+      </Section>
+
       <PromoBanner />
+      <Hero />
 
       {/* Popular Brands */}
-      <Section title="Popular Brands" subtitle="Shop from the world's most trusted electronics brands" to="/brands" dark>
+      <Section title="Popular Brands" subtitle="Shop from the world's most trusted brands" to="/brands" dark>
         <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-10 gap-3">
           {brandsLoading
             ? Array(10).fill(0).map((_, i) => <div key={i} className="card h-20 animate-pulse bg-gray-100" />)
@@ -209,19 +277,6 @@ const Home = () => {
           }
         </div>
       </Section>
-
-      {/* Why Shop With Us */}
-      <section className="py-14 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-10">
-            <h2 className="section-title">Why Shop With Us?</h2>
-            <p className="section-subtitle">We're committed to giving you the best shopping experience</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {features.map((feature, i) => <FeatureCard key={feature.title} feature={feature} index={i} />)}
-          </div>
-        </div>
-      </section>
 
       <TestimonialsSection />
       <Newsletter />

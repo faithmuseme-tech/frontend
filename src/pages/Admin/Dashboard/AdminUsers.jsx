@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import adminService from "../../../services/adminService";
-import { FiUsers, FiToggleLeft, FiToggleRight } from "react-icons/fi";
+import { FiUsers, FiToggleLeft, FiToggleRight, FiKey, FiCheck, FiX } from "react-icons/fi";
 
 const TABS = [
   { label: "All", value: "" },
@@ -23,9 +23,27 @@ const AdminUsers = () => {
 
   useEffect(() => { load(tab); }, [tab]);
 
-  const toggleActive = async (user) => {
-    await adminService.updateUser(user.id, { is_active: !user.is_active });
-    setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, is_active: !u.is_active } : u));
+  const [resetting, setResetting] = useState(null);
+  const [newPw, setNewPw] = useState("");
+  const [pwMsg, setPwMsg] = useState(null);
+
+  const startReset = (id) => { setResetting(id); setNewPw(""); setPwMsg(null); };
+  const cancelReset = () => { setResetting(null); setNewPw(""); setPwMsg(null); };
+
+  const submitReset = async (id) => {
+    if (newPw.length < 6) { setPwMsg({ ok: false, text: "Min 6 characters" }); return; }
+    try {
+      await adminService.resetPassword(id, newPw);
+      setPwMsg({ ok: true, text: "Password reset!" });
+      setTimeout(cancelReset, 1500);
+    } catch {
+      setPwMsg({ ok: false, text: "Failed. Try again." });
+    }
+  };
+
+  const toggleActive = async (u) => {
+    await adminService.updateUser(u.id, { is_active: !u.is_active });
+    setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, is_active: !x.is_active } : x));
   };
 
   return (
@@ -63,7 +81,7 @@ const AdminUsers = () => {
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase hidden sm:table-cell">Role</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">Joined</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                <th className="px-5 py-3" />
+              <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -88,10 +106,40 @@ const AdminUsers = () => {
                     </span>
                   </td>
                   <td className="px-5 py-3">
-                    <button onClick={() => toggleActive(u)} title={u.is_active ? "Deactivate" : "Activate"}
-                      className={`text-xl transition-colors ${u.is_active ? "text-green-500 hover:text-red-400" : "text-gray-300 hover:text-green-500"}`}>
-                      {u.is_active ? <FiToggleRight /> : <FiToggleLeft />}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => toggleActive(u)} title={u.is_active ? "Deactivate" : "Activate"}
+                        className={`text-xl transition-colors ${u.is_active ? "text-green-500 hover:text-red-400" : "text-gray-300 hover:text-green-500"}`}>
+                        {u.is_active ? <FiToggleRight /> : <FiToggleLeft />}
+                      </button>
+                      <button onClick={() => startReset(u.id)} title="Reset password"
+                        className="text-gray-400 hover:text-indigo-500 transition-colors text-base">
+                        <FiKey />
+                      </button>
+                    </div>
+                    {resetting === u.id && (
+                      <div className="mt-2 flex flex-col gap-1.5">
+                        <input
+                          type="text"
+                          value={newPw}
+                          onChange={(e) => setNewPw(e.target.value)}
+                          placeholder="New password"
+                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs w-36 focus:outline-none focus:border-indigo-400"
+                        />
+                        <div className="flex gap-1">
+                          <button onClick={() => submitReset(u.id)}
+                            className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-2 py-1 rounded-lg transition-colors">
+                            <FiCheck size={11} /> Set
+                          </button>
+                          <button onClick={cancelReset}
+                            className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-semibold px-2 py-1 rounded-lg transition-colors">
+                            <FiX size={11} /> Cancel
+                          </button>
+                        </div>
+                        {pwMsg && (
+                          <p className={`text-xs font-semibold ${pwMsg.ok ? "text-green-600" : "text-red-500"}`}>{pwMsg.text}</p>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

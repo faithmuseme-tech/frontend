@@ -51,23 +51,23 @@ const Newsletter = () => {
               <p className="text-white font-semibold">You're subscribed! Welcome to the Electrons family 🎉</p>
             </motion.div>
           ) : (
-            <form onSubmit={handleSubmit} className="mt-8 flex flex-col sm:flex-row gap-3">
-              <div className="flex-1 relative">
-                <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <form onSubmit={handleSubmit} className="mt-8 flex flex-row gap-2">
+              <div className="flex-1 relative min-w-0">
+                <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError(""); }}
                   placeholder="Enter your email address"
-                  className="w-full pl-11 pr-4 py-3.5 rounded-xl bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-white/50 text-sm"
+                  className="w-full pl-9 pr-3 py-3 rounded-xl bg-white text-gray-800 placeholder-gray-400 outline-none focus:ring-2 focus:ring-white/50 text-sm"
                   aria-label="Email address"
                 />
               </div>
               <button
                 type="submit"
-                className="btn-accent flex items-center justify-center gap-2 whitespace-nowrap"
+                className="flex-shrink-0 flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white font-bold px-4 sm:px-5 py-3 rounded-xl text-sm transition-all whitespace-nowrap"
               >
-                Subscribe <FiArrowRight />
+                Subscribe <FiArrowRight className="hidden sm:inline" />
               </button>
             </form>
           )}

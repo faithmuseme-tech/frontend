@@ -5,7 +5,8 @@ const traderService = {
   getProfile: () => api.get("/auth/trader/profile/"),
   updateProfile: (data) => api.patch("/auth/trader/profile/", data),
 
-  getProducts: () => api.get("/products/trader/"),
+  getProducts: (search = "") => api.get(`/products/trader/${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  getProduct: (id) => api.get(`/products/trader/${id}/`),
   createProduct: (data) => api.post("/products/trader/", data, {
     headers: { "Content-Type": "multipart/form-data" },
   }),
@@ -22,6 +23,15 @@ const traderService = {
   },
   deleteImage: (id, imageId) =>
     api.delete(`/products/trader/${id}/images/`, { data: { image_id: imageId } }),
+
+  // Flash Deals
+  getFlashDeals: () => api.get("/flash-deals/trader/"),
+  createFlashDeal: (data) => api.post("/flash-deals/trader/", data),
+  deleteFlashDeal: (id) => api.delete(`/flash-deals/trader/${id}/`),
+
+  // Orders
+  getOrders: () => api.get("/orders/trader/"),
+  getStats: () => api.get("/orders/trader/stats/"),
 };
 
 export default traderService;

@@ -3,11 +3,12 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   FiSearch, FiHeart, FiShoppingCart, FiUser, FiMenu, FiX, FiShield,
   FiShoppingBag, FiMessageSquare, FiXCircle, FiLogOut, FiMapPin, FiCreditCard,
+  FiGrid, FiMessageCircle,
 } from "react-icons/fi";
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 import { useAuth } from "../../context/AuthContext";
-import PrimeAisleLogo from "../Logo/PrimeAisleLogo";
+import CartPulseLogo from "../Logo/CartPulseLogo";
 import api from "../../services/api";
 
 const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
@@ -58,10 +59,13 @@ const AccountModal = ({ user, onClose, onLogout }) => {
   const items = [
     { icon: <FiShoppingBag />, label: "My Orders", to: "/orders" },
     { icon: <FiMessageSquare />, label: "Inbox", to: "/inbox" },
+    { icon: <FiMessageCircle />, label: "Chat Support", to: "/chat" },
     { icon: <FiMapPin />, label: "Change Location", to: "/profile/location" },
     { icon: <FiCreditCard />, label: "Payment Methods", to: "/profile/payment" },
     { icon: <FiXCircle />, label: "Close Account", to: "/profile/close", danger: true },
   ];
+
+  const isTrader = user?.is_trader && user?.trader_profile?.status === "approved";
 
   return (
     <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden" ref={ref}>
@@ -70,6 +74,17 @@ const AccountModal = ({ user, onClose, onLogout }) => {
         <p className="text-sm font-bold text-gray-900 truncate">{user?.first_name || user?.username || "Account"}</p>
         <p className="text-xs text-gray-500 truncate">{user?.email}</p>
       </div>
+
+      {/* Trader shortcut */}
+      {isTrader && (
+        <Link
+          to="/trader/dashboard"
+          onClick={onClose}
+          className="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors border-b border-indigo-100"
+        >
+          <FiGrid className="text-base" /> My Trader Dashboard
+        </Link>
+      )}
 
       {/* Menu items */}
       <div className="py-1">
@@ -111,12 +126,28 @@ const Navbar = () => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatUnread, setChatUnread] = useState(0);
   const { totalItems } = useCart();
   const { count: wishlistCount } = useWishlist();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
+
+  useEffect(() => {
+    if (user) {
+      api.get("/notifications/unread-count/")
+        .then((r) => setUnreadCount(r.data.count || 0))
+        .catch(() => {});
+      api.get("/chat/my/unread/")
+        .then((r) => setChatUnread(r.data.count || 0))
+        .catch(() => {});
+    } else {
+      setUnreadCount(0);
+      setChatUnread(0);
+    }
+  }, [user]);
 
   const fetchSuggestions = useCallback((q) => {
     if (!q.trim()) { setSuggestions([]); return; }
@@ -178,7 +209,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16 gap-4">
           {/* Logo */}
           <Link to="/" className="flex-shrink-0">
-            <PrimeAisleLogo size={34} textClass="text-xl font-extrabold hidden sm:inline" />
+            <CartPulseLogo size={34} textClass="text-xl font-extrabold" />
           </Link>
 
           {/* Search bar — desktop */}
@@ -236,6 +267,28 @@ const Navbar = () => {
               )}
             </Link>
 
+            {user && (
+              <Link to="/inbox" className="relative p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors" aria-label="Inbox">
+                <FiMessageSquare className="text-xl" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+            )}
+
+            {user && (
+              <Link to="/chat" className="relative p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors" aria-label="Chat Support">
+                <FiMessageCircle className="text-xl" />
+                {chatUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-indigo-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                    {chatUnread > 9 ? "9+" : chatUnread}
+                  </span>
+                )}
+              </Link>
+            )}
+
             <Link to="/cart" className="relative p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors" aria-label="Cart">
               <FiShoppingCart className="text-xl" />
               {totalItems > 0 && (
@@ -244,6 +297,17 @@ const Navbar = () => {
                 </span>
               )}
             </Link>
+
+            {/* Trader dashboard shortcut */}
+            {user?.is_trader && user?.trader_profile?.status === "approved" && (
+              <Link
+                to="/trader/dashboard"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors"
+                aria-label="Trader Dashboard"
+              >
+                <FiGrid className="text-sm" /> My Store
+              </Link>
+            )}
 
             {/* Admin shortcut */}
             {user && (user.is_admin || user.is_staff) && (
@@ -320,6 +384,10 @@ const Navbar = () => {
                 <>
                   <Link to="/orders" onClick={() => setMenuOpen(false)} className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-lg flex items-center gap-2"><FiShoppingBag /> My Orders</Link>
                   <Link to="/inbox" onClick={() => setMenuOpen(false)} className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-lg flex items-center gap-2"><FiMessageSquare /> Inbox</Link>
+                  <Link to="/chat" onClick={() => setMenuOpen(false)} className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-lg flex items-center gap-2"><FiMessageCircle /> Chat Support</Link>
+                  {user?.is_trader && user?.trader_profile?.status === "approved" && (
+                    <Link to="/trader/dashboard" onClick={() => setMenuOpen(false)} className="px-4 py-2.5 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg flex items-center gap-2"><FiGrid /> My Trader Dashboard</Link>
+                  )}
                   <button onClick={() => { logout(); setMenuOpen(false); }} className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-lg flex items-center gap-2 w-full text-left"><FiLogOut /> Logout</button>
                 </>
               ) : (

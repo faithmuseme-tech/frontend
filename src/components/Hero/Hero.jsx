@@ -1,9 +1,58 @@
-import React from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { FiArrowRight, FiZap } from "react-icons/fi";
+import { motion, AnimatePresence } from "framer-motion";
+import { FiArrowRight, FiCpu, FiChevronLeft, FiChevronRight, FiShoppingCart, FiStar } from "react-icons/fi";
+import { formatUGX } from "../../utils/currency";
+import api from "../../services/api";
+
+const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
+const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+
+const SLIDE_INTERVAL = 3500;
 
 const Hero = () => {
+  const [slides, setSlides] = useState([]);
+  const [idx, setIdx] = useState(0);
+  const [direction, setDirection] = useState(1);
+
+  useEffect(() => {
+    api.get("/products/best-sellers/")
+      .then((r) => {
+        const list = (r.data?.results || r.data || []).slice(0, 3);
+        setSlides(list.map((p) => ({
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          price: parseFloat(p.price),
+          original_price: p.original_price ? parseFloat(p.original_price) : null,
+          discount: p.discount || 0,
+          image: toAbsolute(p.primary_image),
+          rating: p.avg_rating || 0,
+          reviews: p.review_count || 0,
+          badge: p.badge || "Best Seller",
+          category: p.category_name || "",
+        })));
+      })
+      .catch(() => {});
+  }, []);
+
+  const go = useCallback((dir) => {
+    setDirection(dir);
+    setIdx((prev) => (prev + dir + slides.length) % slides.length);
+  }, [slides.length]);
+
+  useEffect(() => {
+    if (slides.length < 2) return;
+    const t = setInterval(() => go(1), SLIDE_INTERVAL);
+    return () => clearInterval(t);
+  }, [slides.length, go]);
+
+  const variants = {
+    enter: (d) => ({ x: d > 0 ? 80 : -80, opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit: (d) => ({ x: d > 0 ? -80 : 80, opacity: 0 }),
+  };
+
   return (
     <section className="relative overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-blue-900 min-h-[88vh] flex items-center">
       {/* Background decorations */}
@@ -11,7 +60,6 @@ const Hero = () => {
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-primary-500/20 rounded-full blur-3xl" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-3xl" />
-        {/* Grid pattern */}
         <div
           className="absolute inset-0 opacity-5"
           style={{
@@ -23,6 +71,7 @@ const Hero = () => {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-24 w-full">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
+
           {/* Left content */}
           <div>
             <motion.div
@@ -31,8 +80,8 @@ const Hero = () => {
               transition={{ duration: 0.5 }}
               className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 text-sm text-blue-200 mb-6"
             >
-              <FiZap className="text-accent-400" />
-              <span>New arrivals every week — Shop the latest tech</span>
+              <FiCpu className="text-accent-400" />
+              <span>New IoT components every week — Build your next project</span>
             </motion.div>
 
             <motion.h1
@@ -41,11 +90,11 @@ const Hero = () => {
               transition={{ duration: 0.6, delay: 0.1 }}
               className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight"
             >
-              Power Your World
+              Build Smarter
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-accent-400 to-yellow-300">
-                with the Latest
+                University IoT
               </span>
-              Electronics
+              Projects
             </motion.h1>
 
             <motion.p
@@ -54,7 +103,7 @@ const Hero = () => {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="mt-6 text-lg text-blue-200 leading-relaxed max-w-lg"
             >
-              Discover smartphones, laptops, gaming gear, smart home devices, accessories, and much more — all at unbeatable prices with fast delivery.
+              Everything students need — Arduino, Raspberry Pi, sensors, modules, and components. Turn your ideas into real IoT projects with fast delivery right to campus.
             </motion.p>
 
             <motion.div
@@ -63,17 +112,14 @@ const Hero = () => {
               transition={{ duration: 0.6, delay: 0.3 }}
               className="mt-8 flex flex-wrap gap-4"
             >
-              <Link
-                to="/shop"
-                className="btn-accent flex items-center gap-2 text-base"
-              >
-                Shop Now <FiArrowRight />
+              <Link to="/shop" className="btn-accent flex items-center gap-2 text-base">
+                Shop Components <FiArrowRight />
               </Link>
               <Link
-                to="/deals"
+                to="/categories"
                 className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/30 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200"
               >
-                Explore Deals
+                Browse Projects
               </Link>
             </motion.div>
 
@@ -85,9 +131,9 @@ const Hero = () => {
               className="mt-12 flex flex-wrap gap-8"
             >
               {[
-                { value: "50K+", label: "Products" },
-                { value: "200K+", label: "Happy Customers" },
-                { value: "100+", label: "Top Brands" },
+                { value: "500+", label: "IoT Components" },
+                { value: "10K+", label: "Student Builders" },
+                { value: "50+", label: "Project Kits" },
                 { value: "4.9★", label: "Average Rating" },
               ].map((stat) => (
                 <div key={stat.label}>
@@ -98,40 +144,141 @@ const Hero = () => {
             </motion.div>
           </div>
 
-          {/* Right — hero image */}
+          {/* Right — product ad slider */}
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.7, delay: 0.2 }}
             className="relative hidden lg:flex justify-center items-center"
           >
-            <div className="relative w-full max-w-lg">
-              {/* Glow */}
-              <div className="absolute inset-0 bg-gradient-to-r from-primary-500/30 to-blue-400/30 rounded-3xl blur-2xl scale-110" />
-              <img
-                src="https://images.unsplash.com/photo-1498049794561-7780e7231661?w=700&h=600&fit=crop"
-                alt="Latest electronics collection"
-                className="relative rounded-3xl shadow-2xl w-full object-cover"
-                loading="eager"
-              />
-              {/* Floating badges */}
-              <motion.div
-                animate={{ y: [0, -8, 0] }}
-                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-                className="absolute -top-4 -left-4 glass rounded-2xl px-4 py-3 shadow-xl"
-              >
-                <div className="text-white text-xs font-semibold">🔥 Flash Sale</div>
-                <div className="text-accent-400 text-lg font-extrabold">Up to 40% OFF</div>
-              </motion.div>
-              <motion.div
-                animate={{ y: [0, 8, 0] }}
-                transition={{ repeat: Infinity, duration: 3.5, ease: "easeInOut" }}
-                className="absolute -bottom-4 -right-4 glass rounded-2xl px-4 py-3 shadow-xl"
-              >
-                <div className="text-white text-xs font-semibold">✅ Free Delivery</div>
-                <div className="text-blue-200 text-sm">On orders over $50</div>
-              </motion.div>
-            </div>
+            {slides.length === 0 ? (
+              /* fallback static image while loading */
+              <div className="relative w-full max-w-lg">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-500/30 to-blue-400/30 rounded-3xl blur-2xl scale-110" />
+                <img
+                  src="https://res.cloudinary.com/d5qqtsou/image/upload/v1783935397/arduino_mega_hfl9bh.webp"
+                  alt="Arduino Mega — IoT project component"
+                  className="relative rounded-3xl shadow-2xl w-full object-cover"
+                  loading="eager"
+                  fetchpriority="high"
+                />
+              </div>
+            ) : (
+              <div className="relative w-full max-w-lg select-none">
+                {/* Glow */}
+                <div className="absolute inset-0 bg-gradient-to-r from-primary-500/30 to-blue-400/30 rounded-3xl blur-2xl scale-110 pointer-events-none" />
+
+                {/* Card */}
+                <div className="relative bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl overflow-hidden shadow-2xl">
+
+                  {/* Ad label */}
+                  <div className="absolute top-4 left-4 z-10 bg-accent-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">
+                    🔥 Most Popular
+                  </div>
+
+                  {/* Slide counter */}
+                  <div className="absolute top-4 right-4 z-10 bg-black/30 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                    {idx + 1} / {slides.length}
+                  </div>
+
+                  {/* Image */}
+                  <div className="relative h-64 overflow-hidden bg-white/5">
+                    <AnimatePresence custom={direction} mode="wait">
+                      <motion.img
+                        key={slides[idx].id}
+                        custom={direction}
+                        variants={variants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        transition={{ duration: 0.35, ease: "easeInOut" }}
+                        src={slides[idx].image}
+                        alt={slides[idx].name}
+                        loading={idx === 0 ? "eager" : "lazy"}
+                        fetchpriority={idx === 0 ? "high" : "auto"}
+                        className="absolute inset-0 w-full h-full object-contain p-6"
+                      />
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Info */}
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={`info-${slides[idx].id}`}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.25 }}
+                      className="px-6 py-5"
+                    >
+                      {slides[idx].badge && (
+                        <span className="inline-block text-[10px] font-bold text-accent-400 uppercase tracking-widest mb-1">
+                          {slides[idx].badge}
+                        </span>
+                      )}
+                      <p className="text-white font-bold text-lg leading-tight line-clamp-2">
+                        {slides[idx].name}
+                      </p>
+
+                      {/* Rating */}
+                      {slides[idx].rating > 0 && (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <FiStar className="text-yellow-400 text-xs fill-yellow-400" />
+                          <span className="text-yellow-300 text-xs font-semibold">{slides[idx].rating}</span>
+                          <span className="text-blue-300 text-xs">({slides[idx].reviews} reviews)</span>
+                        </div>
+                      )}
+
+                      {/* Price + CTA */}
+                      <div className="flex items-center justify-between mt-4">
+                        <div>
+                          <span className="text-white font-extrabold text-xl">{formatUGX(slides[idx].price)}</span>
+                          {slides[idx].original_price && (
+                            <span className="ml-2 text-blue-300 text-sm line-through">{formatUGX(slides[idx].original_price)}</span>
+                          )}
+                          {slides[idx].discount > 0 && (
+                            <span className="ml-2 bg-green-500/20 text-green-300 text-xs font-bold px-2 py-0.5 rounded-full">
+                              -{slides[idx].discount}%
+                            </span>
+                          )}
+                        </div>
+                        <Link
+                          to={`/product/${slides[idx].slug}`}
+                          className="flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors"
+                        >
+                          <FiShoppingCart className="text-sm" /> Buy Now
+                        </Link>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+
+                  {/* Prev / Next */}
+                  <button
+                    onClick={() => go(-1)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/30 hover:bg-black/50 text-white rounded-full flex items-center justify-center transition-colors z-10"
+                  >
+                    <FiChevronLeft />
+                  </button>
+                  <button
+                    onClick={() => go(1)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/30 hover:bg-black/50 text-white rounded-full flex items-center justify-center transition-colors z-10"
+                  >
+                    <FiChevronRight />
+                  </button>
+                </div>
+
+                {/* Dot indicators */}
+                <div className="flex justify-center gap-2 mt-4">
+                  {slides.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setDirection(i > idx ? 1 : -1); setIdx(i); }}
+                      className={`h-1.5 rounded-full transition-all duration-300 ${i === idx ? "w-6 bg-accent-400" : "w-1.5 bg-white/30"}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
       </div>

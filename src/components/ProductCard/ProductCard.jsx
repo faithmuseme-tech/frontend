@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FiHeart, FiShoppingCart, FiEye } from "react-icons/fi";
-import { useCart } from "../../context/CartContext";
+import { FiHeart, FiEye } from "react-icons/fi";
 import { useWishlist } from "../../context/WishlistContext";
 import Rating from "../Rating/Rating";
 import { formatUGX } from "../../utils/currency";
@@ -15,12 +14,10 @@ const badgeColors = {
   Gaming: "bg-orange-500",
 };
 
-const ProductCard = ({ product }) => {
+const ProductCard = ({ product, eager = false }) => {
   const { id, name, brand, rating, reviews, price, originalPrice, discount, image, inStock, badge } = product;
   const deliveryCharge = product.deliveryCharge ?? product.delivery_charge ?? 0;
-  const { addItem } = useCart();
   const { toggle, isWishlisted } = useWishlist();
-  const [added, setAdded] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const slug = product.slug || id;
@@ -28,10 +25,7 @@ const ProductCard = ({ product }) => {
 
   const handleAddToCart = (e) => {
     e.preventDefault();
-    if (!inStock) return;
-    addItem(product);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1500);
+    navigate(productLink);
   };
 
   const navigate = useNavigate();
@@ -55,7 +49,8 @@ const ProductCard = ({ product }) => {
           <img
             src={image}
             alt={name}
-            loading="lazy"
+            loading={eager ? "eager" : "lazy"}
+            fetchpriority={eager ? "high" : "auto"}
             onLoad={() => setImgLoaded(true)}
             className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${imgLoaded ? "opacity-100" : "opacity-0"}`}
           />
@@ -126,13 +121,10 @@ const ProductCard = ({ product }) => {
             className={`mt-2 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
               !inStock
                 ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                : added
-                ? "bg-green-500 text-white"
                 : "bg-primary-600 hover:bg-primary-700 text-white active:scale-95"
             }`}
           >
-            <FiShoppingCart className="text-base" />
-            {added ? "Added!" : inStock ? "Add to Cart" : "Out of Stock"}
+            {inStock ? "View Product" : "Out of Stock"}
           </button>
         </div>
       </Link>

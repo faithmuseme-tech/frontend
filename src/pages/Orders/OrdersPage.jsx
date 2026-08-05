@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  FiPackage, FiCheck, FiX, FiMapPin, FiCalendar, FiShoppingBag, FiArrowLeft,
+  FiPackage, FiCheck, FiX, FiMapPin, FiCalendar, FiShoppingBag, FiArrowLeft, FiStar,
 } from "react-icons/fi";
 import api from "../../services/api";
 import { formatUGX } from "../../utils/currency";
 import Modal from "../../components/Modal/Modal";
+import RateProductModal from "../../components/Modal/RateProductModal";
 
 const STATUS_STYLES = {
   pending:   { pill: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400" },
@@ -106,7 +107,7 @@ const OrderRow = ({ order, selected, onClick }) => {
 };
 
 /* ── Right: Order Detail ── */
-const OrderDetail = ({ order, onBack }) => {
+const OrderDetail = ({ order, onBack, onRate, ratedProductIds = new Set() }) => {
   const style = STATUS_STYLES[order.status] || STATUS_STYLES.pending;
   return (
     <div className="flex flex-col h-full">
@@ -166,7 +167,23 @@ const OrderDetail = ({ order, onBack }) => {
                     <p className="text-xs text-gray-400">Qty: {item.quantity}</p>
                   </div>
                 </div>
-                <p className="text-sm font-bold text-gray-900 flex-shrink-0">{formatUGX(item.subtotal)}</p>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <p className="text-sm font-bold text-gray-900">{formatUGX(item.subtotal)}</p>
+                  {order.status === "delivered" && item.product && (
+                    ratedProductIds.has(item.product) ? (
+                      <span className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                        <FiCheck className="text-xs" /> Rated
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => onRate({ id: item.product, name: item.product_name })}
+                        className="flex items-center gap-1 text-xs font-semibold text-yellow-600 hover:text-yellow-700 transition-colors"
+                      >
+                        <FiStar className="text-xs" /> Rate
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -199,6 +216,8 @@ const OrdersPage = () => {
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [rateTarget, setRateTarget] = useState(null);
+  const [ratedProductIds, setRatedProductIds] = useState(new Set());
 
   useEffect(() => {
     api.get("/orders/")
@@ -274,29 +293,22 @@ const OrdersPage = () => {
 
       <div className="grid md:grid-cols-[300px_1fr] gap-4 items-start">
         {/* Left — order list */}
-        <div className={`bg-white rounded-2xl border border-gray-100 p-3 space-y-1 ${selected ? "hidden md:block" : "block"}`}>
+        <div className="bg-white rounded-2xl border border-gray-100 p-3 space-y-1">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 pb-2">All Orders</p>
           {orders.map((o) => (
             <OrderRow
               key={o.id}
               order={o}
               selected={selected?.id === o.id}
-              onClick={() => setSelected(o)}
+              onClick={() => { setSelected(o); setShowModal(false); }}
             />
           ))}
         </div>
 
-        {/* Right — detail */}
-        <div className={`bg-white rounded-2xl border border-gray-100 min-h-[520px] ${selected ? "block" : "hidden md:flex md:items-center md:justify-center"}`}>
+        {/* Right — detail (desktop) */}
+        <div className={`hidden md:block bg-white rounded-2xl border border-gray-100 min-h-[520px]`}>
           {selected ? (
-            <div className="p-6">
-              <div className="md:block hidden">
-                <OrderDetail order={selected} onBack={() => setSelected(null)} />
-              </div>
-              <div className="md:hidden block">
-                <button onClick={() => setShowModal(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl">View Details</button>
-              </div>
-            </div>
+            <OrderDetail order={selected} onBack={() => setSelected(null)} onRate={setRateTarget} ratedProductIds={ratedProductIds} />
           ) : (
             <div className="text-center text-gray-300 py-20">
               <FiPackage className="text-5xl mx-auto mb-3" />
@@ -305,13 +317,33 @@ const OrdersPage = () => {
           )}
         </div>
 
-      {/* Modal for mobile/small screens */}
+        {/* Mobile — tap order row → show modal */}
+        {selected && (
+          <div className="md:hidden">
+            <button onClick={() => setShowModal(true)} className="w-full px-4 py-3 bg-indigo-600 text-white rounded-xl font-semibold text-sm">
+              View Order Details
+            </button>
+          </div>
+        )}
+
+      {/* Modal for mobile */}
       {selected && (
-        <>
-          <Modal open={showModal} onClose={() => setShowModal(false)} title={`Order #${shortId(selected.order_number)}`}>
-            <OrderDetail order={selected} onBack={() => { setShowModal(false); setSelected(null); }} />
-          </Modal>
-        </>
+        <Modal open={showModal} onClose={() => setShowModal(false)} title={`Order #${shortId(selected.order_number)}`}>
+          <OrderDetail
+            order={selected}
+            onBack={() => { setShowModal(false); setSelected(null); }}
+            onRate={(p) => { setShowModal(false); setRateTarget(p); }}
+            ratedProductIds={ratedProductIds}
+          />
+        </Modal>
+      )}
+      {rateTarget && (
+        <RateProductModal
+          open={!!rateTarget}
+          onClose={() => setRateTarget(null)}
+          product={rateTarget}
+          onSuccess={() => { setRatedProductIds((prev) => new Set([...prev, rateTarget.id])); setRateTarget(null); }}
+        />
       )}
       </div>
     </div>

@@ -1,23 +1,43 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import traderService from "../../../services/traderService";
-import { FiPlusCircle, FiEdit2, FiTrash2, FiPackage, FiAlertCircle } from "react-icons/fi";
+import { FiPlusCircle, FiEdit2, FiTrash2, FiPackage, FiAlertCircle, FiSearch, FiX } from "react-icons/fi";
 
 const TraderProducts = () => {
   const [products, setProducts] = useState([]);
+  const [totalCount, setTotalCount] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(null);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
 
-  const load = () => {
+  const load = useCallback((q = "") => {
     setLoading(true);
-    traderService.getProducts()
-      .then((res) => setProducts(res.data?.results || res.data || []))
+    traderService.getProducts(q)
+      .then((res) => {
+        const raw = res.data;
+        const list = raw?.results || (Array.isArray(raw) ? raw : []);
+        setProducts(list);
+        setTotalCount(raw?.count ?? list.length);
+      })
       .catch(() => setError("Failed to load products."))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    setQuery(search);
+    load(search);
   };
 
-  useEffect(() => { load(); }, []);
+  const clearSearch = () => {
+    setSearch("");
+    setQuery("");
+    load("");
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this product?")) return;
@@ -25,6 +45,7 @@ const TraderProducts = () => {
     try {
       await traderService.deleteProduct(id);
       setProducts((prev) => prev.filter((p) => p.id !== id));
+      setTotalCount((prev) => (prev !== null ? prev - 1 : null));
     } catch {
       setError("Failed to delete product.");
     } finally {
@@ -32,20 +53,40 @@ const TraderProducts = () => {
     }
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[40vh]">
-      <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-    </div>
-  );
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold text-gray-900">My Products</h1>
+        <div>
+          <h1 className="text-2xl font-extrabold text-gray-900">My Products</h1>
+          {!loading && totalCount !== null && (
+            <p className="text-sm text-gray-500 mt-0.5">{totalCount} product{totalCount !== 1 ? "s" : ""} total</p>
+          )}
+        </div>
         <Link to="/trader/dashboard/add-product" className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all">
           <FiPlusCircle /> Add Product
         </Link>
       </div>
+
+      {/* Search */}
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <div className="relative flex-1">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, SKU, category..."
+            className="w-full border border-gray-200 rounded-xl pl-9 pr-9 py-2.5 text-sm focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+          />
+          {search && (
+            <button type="button" onClick={clearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <FiX size={14} />
+            </button>
+          )}
+        </div>
+        <button type="submit" className="bg-primary-600 hover:bg-primary-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-all">
+          Search
+        </button>
+      </form>
 
       {error && (
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-600">
@@ -53,16 +94,25 @@ const TraderProducts = () => {
         </div>
       )}
 
-      {products.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center min-h-[40vh]">
+          <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+        </div>
+      ) : products.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
           <FiPackage className="text-5xl text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">No products yet.</p>
-          <Link to="/trader/dashboard/add-product" className="inline-flex items-center gap-2 mt-4 bg-primary-600 text-white font-semibold px-5 py-2.5 rounded-xl text-sm">
-            <FiPlusCircle /> Add your first product
-          </Link>
+          <p className="text-gray-500 font-medium">{query ? `No products found for "${query}"` : "No products yet."}</p>
+          {!query && (
+            <Link to="/trader/dashboard/add-product" className="inline-flex items-center gap-2 mt-4 bg-primary-600 text-white font-semibold px-5 py-2.5 rounded-xl text-sm">
+              <FiPlusCircle /> Add your first product
+            </Link>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 text-xs text-gray-500">
+            {totalCount ?? products.length} product{(totalCount ?? products.length) !== 1 ? "s" : ""}{query ? ` matching "${query}"` : " total"}
+          </div>
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>

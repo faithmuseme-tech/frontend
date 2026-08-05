@@ -51,3 +51,6 @@
 /* Hide scrollbar for horizontal scroll */
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* iPhone safe area for chat input */
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }

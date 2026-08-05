@@ -10,39 +10,43 @@ import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import { formatUGX } from "../../utils/currency";
 import orderService from "../../services/orderService";
+import authService from "../../services/authService";
 
-// Districts grouped by region with per-item delivery fee
-const REGIONS = [
-  {
-    name: "Central Region", fee: 3000,
-    districts: ["Buikwe","Bukomansimbi","Butambala","Buvuma","Gomba","Kalangala","Kalungu","Kampala","Kassanda","Kayunga","Kiboga","Kyankwanzi","Kyotera","Luwero","Lwengo","Lyantonde","Masaka","Mityana","Mpigi","Mubende","Mukono","Nakaseke","Nakasongola","Rakai","Sembabule","Wakiso"],
-  },
-  {
-    name: "Eastern Region", fee: 5000,
-    districts: ["Amuria","Budaka","Bududa","Bugiri","Bugweri","Bukedea","Bukwa","Bulambuli","Busia","Butaleja","Butebo","Buyende","Iganga","Jinja","Kaberamaido","Kaliro","Kamuli","Kapchorwa","Katakwi","Kibuku","Kumi","Kween","Luuka","Manafwa","Mayuge","Mbale","Namayingo","Namisindwa","Namutumba","Ngora","Pallisa","Serere","Sironko","Soroti","Tororo"],
-  },
-  {
-    name: "Northern Region", fee: 8000,
-    districts: ["Abim","Adjumani","Agago","Alebtong","Amolatar","Amudat","Amuru","Apac","Arua","Dokolo","Gulu","Kaabong","Kabong","Karenga","Kitgum","Koboko","Kole","Kotido","Lamwo","Lira","Maracha","Moroto","Moyo","Nakapiripirit","Napak","Nebbi","Nwoya","Omoro","Otuke","Oyam","Pader","Pakwach","Yumbe","Zombo"],
-  },
-  {
-    name: "Western Region", fee: 8000,
-    districts: ["Bunyangabu","Buhweju","Buliisa","Bundibugyo","Bushenyi","Hoima","Ibanda","Isingiro","Kabale","Kabarole","Kamwenge","Kanungu","Kasese","Kazo","Kibale","Kiruhura","Kiryandongo","Kisoro","Kitagwenda","Kikuube","Kyegegwa","Kyenjojo","Masindi","Mbarara","Mitooma","Ntoroko","Ntungamo","Rubanda","Rukiga","Rukungiri","Rwampara","Sheema"],
-  },
-];
+// Delivery fee rules:
+// 1 product line  → UGX 10,000 × total quantity
+// 2+ product lines → UGX 5,000 × total quantity  (all regions)
+const SINGLE_FEE = 10000;
+const MULTI_FEE  = 5000;
 
-const FEE_PER_ITEM = (district = "") => {
-  const d = district.trim().toLowerCase();
-  for (const r of REGIONS) {
-    if (r.districts.some((x) => x.toLowerCase() === d)) return r.fee;
-  }
-  return 8000;
+const DELIVERY_CAP = 90_000;
+
+const getTotalQty = (items = []) => items.reduce((sum, i) => sum + (i.qty || 1), 0);
+
+const getDeliveryFee = (items = []) => {
+  const totalQty = getTotalQty(items);
+  if (totalQty <= 1) return SINGLE_FEE;
+  // First 18 units at 5,000 = 90,000, every unit after that at 4,500
+  const unitsAtNormal = Math.min(totalQty, Math.floor(DELIVERY_CAP / MULTI_FEE));
+  const unitsDiscounted = totalQty - unitsAtNormal;
+  return unitsAtNormal * MULTI_FEE + unitsDiscounted * 4_500;
 };
 
-const getDeliveryFee = (city = "", items = []) => {
-  if (!city.trim()) return 0;
-  const feePerItem = FEE_PER_ITEM(city);
-  return items.reduce((total, item) => total + feePerItem * (item.qty || 1), 0);
+const getFeePerItem = (items = []) => {
+  const totalQty = getTotalQty(items);
+  if (totalQty <= 1) return SINGLE_FEE;
+  return MULTI_FEE * totalQty > DELIVERY_CAP ? 4_500 : MULTI_FEE;
+};
+
+// Delivery date: always 2 days ahead, 3 days if Saturday after noon, never Sunday
+const getDeliveryDate = () => {
+  const now = new Date();
+  const day = now.getDay();
+  const hour = now.getHours();
+  let daysAhead = (day === 6 && hour >= 12) ? 3 : 2;
+  const d = new Date(now);
+  d.setDate(d.getDate() + daysAhead);
+  if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+  return d.toLocaleDateString('en-UG', { weekday: 'long', month: 'short', day: 'numeric' });
 };
 
 const DistrictSelect = ({ districts, value, onChange, disabled, error }) => {
@@ -90,10 +94,39 @@ const DistrictSelect = ({ districts, value, onChange, disabled, error }) => {
 
 
 const PAYMENT_METHODS = [
-  { id: "mtn", label: "MTN Mobile Money", color: "border-yellow-400 bg-yellow-50", badge: "bg-yellow-400 text-white", icon: "📱" },
-  { id: "airtel", label: "Airtel Money", color: "border-red-400 bg-red-50", badge: "bg-red-500 text-white", icon: "📱" },
-  { id: "card", label: "Visa / Mastercard", color: "border-blue-400 bg-blue-50", badge: "bg-blue-600 text-white", icon: "💳" },
-  { id: "cod", label: "Cash on Delivery", color: "border-green-400 bg-green-50", badge: "bg-green-600 text-white", icon: "💵" },
+  {
+    id: "mtn",
+    label: "MTN Mobile Money",
+    number: "0794 448 439",
+    hint: "After placing your order, send the exact total to 0794 448 439 (SABIRA SSEMATA) via MTN MoMo.",
+    color: "border-yellow-400 bg-yellow-50",
+    icon: (
+      <svg viewBox="0 0 40 40" className="w-8 h-8 flex-shrink-0" fill="none">
+        <circle cx="20" cy="20" r="20" fill="#FFCC00"/>
+        <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontSize="11" fontWeight="bold" fill="#1a1a1a">MTN</text>
+      </svg>
+    ),
+  },
+  {
+    id: "airtel",
+    label: "Airtel Money",
+    number: "0794 448 439",
+    hint: "After placing your order, send the exact total to 0794 448 439 (SABIRA SSEMATA) via Airtel Money.",
+    color: "border-red-400 bg-red-50",
+    icon: (
+      <svg viewBox="0 0 40 40" className="w-8 h-8 flex-shrink-0" fill="none">
+        <circle cx="20" cy="20" r="20" fill="#E40000"/>
+        <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontSize="8" fontWeight="bold" fill="white">AIRTEL</text>
+      </svg>
+    ),
+  },
+];
+
+const REGIONS = [
+  { name: "Central", districts: ["Buikwe","Bukomansimbi","Butambala","Buvuma","Gomba","Kalangala","Kalungu","Kampala","Kassanda","Kayunga","Kiboga","Kyankwanzi","Kyotera","Luwero","Lwengo","Lyantonde","Masaka","Mityana","Mpigi","Mubende","Mukono","Nakaseke","Nakasongola","Rakai","Sembabule","Wakiso"] },
+  { name: "Eastern", districts: ["Amuria","Budaka","Bududa","Bugiri","Bugweri","Bukedea","Bukwa","Bulambuli","Busia","Butaleja","Butebo","Buyende","Iganga","Jinja","Kaberamaido","Kaliro","Kamuli","Kapchorwa","Katakwi","Kibuku","Kumi","Kween","Luuka","Manafwa","Mayuge","Mbale","Namayingo","Namisindwa","Namutumba","Ngora","Pallisa","Serere","Sironko","Soroti","Tororo"] },
+  { name: "Western", districts: ["Bundibugyo","Bunyangabu","Bushenyi","Hoima","Ibanda","Isingiro","Kabale","Kabarole","Kagadi","Kakumiro","Kamwenge","Kanungu","Kasese","Kibaale","Kiruhura","Kiryandongo","Kisoro","Kyegegwa","Kyenjojo","Masindi","Mbarara","Mitooma","Ntoroko","Ntungamo","Rubanda","Rubirizi","Rukiga","Rukungiri","Sheema","Fort Portal"] },
+  { name: "Northern", districts: ["Abim","Adjumani","Agago","Alebtong","Amolatar","Amudat","Amuru","Apac","Arua","Dokolo","Gulu","Kaabong","Kitgum","Koboko","Kole","Kotido","Kwania","Lamwo","Lira","Maracha","Moroto","Moyo","Napak","Nebbi","Nwoya","Omoro","Otuke","Oyam","Pader","Pakwach","Soroti","Yumbe","Zombo"] },
 ];
 
 const STEPS = ["Shipping", "Payment", "Review"];
@@ -123,6 +156,7 @@ const CheckoutPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [paymentMethod, setPaymentMethod] = useState("mtn");
+  const [senderPhone, setSenderPhone] = useState("");
 
   const [form, setForm] = useState(() => {
     const city = user?.city || "";
@@ -164,10 +198,17 @@ const CheckoutPage = () => {
     });
   }, [user]);
 
-  const shipping = useMemo(() => getDeliveryFee(form.shipping_city, items), [form.shipping_city, items]);
+  const shipping = useMemo(() => getDeliveryFee(items), [items]);
   const grandTotal = useMemo(() => totalPrice + shipping, [totalPrice, shipping]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const validateStep1 = () => {
+    const e = {};
+    if (!senderPhone.trim()) e.senderPhone = "Required — we need this to match your payment";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const validateStep0 = () => {
     const e = {};
@@ -184,6 +225,7 @@ const CheckoutPage = () => {
 
   const handleNext = () => {
     if (step === 0 && !validateStep0()) return;
+    if (step === 1 && !validateStep1()) return;
     setStep((s) => s + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -196,12 +238,16 @@ const CheckoutPage = () => {
   const handlePlaceOrder = async () => {
     setSubmitting(true);
     try {
+      // Save city/address back to profile if changed
+      if (form.shipping_city && form.shipping_city !== user.city) {
+        authService.updateProfile({ city: form.shipping_city, address: form.shipping_address }).catch(() => {});
+      }
       await orderService.createOrder({
         shipping_address: form.shipping_address,
         shipping_city: form.shipping_city,
         shipping_country: form.shipping_country,
         shipping_zip: form.shipping_zip,
-        notes: form.notes,
+        notes: form.notes ? `${form.notes} | Payment from: ${senderPhone}` : `Payment from: ${senderPhone}`,
         items: items.map((item) => ({
           product_id: item.id,
           product_name: item.name,
@@ -209,8 +255,8 @@ const CheckoutPage = () => {
           quantity: item.qty,
         })),
       });
-      navigate("/success");
       clearCart();
+      navigate("/success", { state: { total: grandTotal, method: paymentMethod, senderPhone } });
     } catch (err) {
       const msg = err?.response?.data?.error || "Failed to place order. Please try again.";
       setErrors({ submit: msg });
@@ -319,7 +365,7 @@ const CheckoutPage = () => {
                       >
                         <option value="">Select region...</option>
                         {REGIONS.map((r) => (
-                          <option key={r.name} value={r.name}>{r.name} — UGX {r.fee.toLocaleString()}/item</option>
+                          <option key={r.name} value={r.name}>{r.name}</option>
                         ))}
                       </select>
                     </div>
@@ -347,12 +393,12 @@ const CheckoutPage = () => {
                     />
                   </div>
 
-                  {/* Delivery estimate */}
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
-                    <Truck size={18} className="text-blue-500 mt-0.5 flex-shrink-0" />
+                  {/* Delivery estimate — persuasive */}
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+                    <Truck size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
                     <div className="text-sm">
-                      <p className="font-bold text-blue-800">When will it arrive?</p>
-                      <p className="text-blue-700 mt-0.5">Your order will be on its way within <span className="font-semibold">2 to 4 business days</span> after we confirm it. We'll keep you in the loop!</p>
+                      <p className="font-bold text-green-800">Order today and get it delivered by {getDeliveryDate()}.</p>
+                      <p className="text-green-700 mt-0.5">We dispatch within <span className="font-semibold">24 hours</span> of confirming your payment. Don't miss out — stock is limited!</p>
                     </div>
                   </div>
 
@@ -396,9 +442,10 @@ const CheckoutPage = () => {
                           paymentMethod === m.id ? m.color + " shadow-md" : "border-gray-200 bg-white hover:border-gray-300"
                         }`}
                       >
-                        <span className="text-2xl">{m.icon}</span>
+                        {m.icon}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-gray-800">{m.label}</p>
+                          {m.number && <p className="text-xs text-gray-500 mt-0.5">{m.number}</p>}
                         </div>
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                           paymentMethod === m.id ? "border-primary-600 bg-primary-600" : "border-gray-300"
@@ -409,46 +456,31 @@ const CheckoutPage = () => {
                     ))}
                   </div>
 
-                  {/* MTN / Airtel phone input */}
-                  {(paymentMethod === "mtn" || paymentMethod === "airtel") && (
-                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-                      <Input
-                        label={`${paymentMethod === "mtn" ? "MTN" : "Airtel"} Mobile Money Number`}
-                        icon={<Phone size={14} />}
+                  {/* Sender phone number */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Your Mobile Money Number <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
                         type="tel"
-                        placeholder="+256 700 000 000"
-                        defaultValue={form.phone}
+                        value={senderPhone}
+                        onChange={(e) => { setSenderPhone(e.target.value); setErrors((err) => ({ ...err, senderPhone: undefined })); }}
+                        placeholder="e.g. 0771 234 567"
+                        className={`w-full border rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:ring-2 transition-all
+                          ${errors.senderPhone ? "border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-primary-400 focus:ring-primary-100"}`}
                       />
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-800 font-medium">
-                        You will receive a payment prompt on your phone after placing the order.
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* Card input */}
-                  {paymentMethod === "card" && (
-                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-                      <Input label="Card Number" icon={<CreditCard size={14} />} placeholder="1234 5678 9012 3456" maxLength={19} />
-                      <div className="grid grid-cols-2 gap-4">
-                        <Input label="Expiry Date" placeholder="MM / YY" />
-                        <Input label="CVV" placeholder="123" maxLength={4} />
-                      </div>
-                      <Input label="Name on Card" icon={<User size={14} />} placeholder="John Doe" />
-                    </motion.div>
-                  )}
-
-                  {paymentMethod === "cod" && (
-                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                      <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 font-medium flex items-start gap-2">
-                        <Check size={16} className="text-green-600 mt-0.5 flex-shrink-0" />
-                        Pay with cash when your order is delivered. Please have the exact amount ready.
-                      </div>
-                    </motion.div>
-                  )}
+                    </div>
+                    {errors.senderPhone
+                      ? <p className="text-xs text-red-500 font-medium">{errors.senderPhone}</p>
+                      : <p className="text-xs text-gray-400">The number you'll use to send the payment — so we can match it to your order.</p>
+                    }
+                  </div>
 
                   <div className="flex items-center gap-2 text-xs text-gray-400 pt-2">
                     <Shield size={13} className="text-green-500" />
-                    Your payment information is encrypted and secure.
+                    Your order details are safe and secure.
                   </div>
                 </div>
               )}
@@ -474,6 +506,7 @@ const CheckoutPage = () => {
                   <div className="bg-gray-50 rounded-xl p-4 text-sm">
                     <p className="font-bold text-gray-700 flex items-center gap-2 mb-2"><CreditCard size={14} className="text-primary-500" /> Payment</p>
                     <p className="text-gray-800 font-semibold">{PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label}</p>
+                    {senderPhone && <p className="text-gray-500 text-xs mt-1">Sending from: <span className="font-semibold text-gray-700">{senderPhone}</span></p>}
                   </div>
 
                   {/* Items */}
@@ -491,6 +524,12 @@ const CheckoutPage = () => {
                         <p className="text-sm font-extrabold text-primary-600 flex-shrink-0">{formatUGX(item.price * item.qty)}</p>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Persuasive delivery reminder */}
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2 text-sm">
+                    <Truck size={16} className="text-green-600 flex-shrink-0" />
+                    <p className="text-green-800 font-semibold">Order today and get it delivered by {getDeliveryDate()}.</p>
                   </div>
 
                   {errors.submit && (
@@ -568,15 +607,17 @@ const CheckoutPage = () => {
                   <span className="flex items-center gap-1.5"><Truck size={13} className="text-gray-400" /> Delivery</span>
                   <span className="font-semibold">{shipping === 0 ? <span className="text-green-600 font-bold">Free</span> : formatUGX(shipping)}</span>
                 </div>
-                {shipping > 0 && form.shipping_city && (
+                {shipping > 0 && (
                   <div className="bg-blue-50 rounded-xl px-3 py-2 space-y-1">
                     {items.map((item) => (
                       <div key={item.id} className="flex justify-between text-xs text-gray-500">
                         <span className="truncate max-w-[140px]">{item.name} × {item.qty}</span>
-                        <span>{formatUGX(FEE_PER_ITEM(form.shipping_city) * item.qty)}</span>
+                        <span>{formatUGX(getFeePerItem(items) * item.qty)}</span>
                       </div>
                     ))}
-                    <p className="text-xs text-blue-500 font-medium pt-1">{formatUGX(FEE_PER_ITEM(form.shipping_city))}/item to {form.shipping_city}</p>
+                    <p className="text-xs text-blue-500 font-medium pt-1">
+                      {formatUGX(getFeePerItem(items))}/product — {items.length > 1 ? "multi-item discount applied!" : "order more to save on delivery!"}
+                    </p>
                   </div>
                 )}
                 <div className="border-t border-gray-100 pt-2.5 flex justify-between items-center">
