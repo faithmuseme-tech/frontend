@@ -17,9 +17,9 @@ const AdminLayout = () => {
   const [insightsUnread, setInsightsUnread] = useState(0);
   const [pendingOrders, setPendingOrders] = useState(0);
 
-  const employeePerms = JSON.parse(localStorage.getItem("employee_permissions") || "null");
   const isFullAdmin = user?.is_admin;
   const isEmployee = user?.is_staff && !user?.is_admin;
+  const visiblePerms = isEmployee ? (Array.isArray(user?.employee_permissions) ? user.employee_permissions : []) : null;
 
   // Chat unread poll
   useEffect(() => {
@@ -113,7 +113,10 @@ const AdminLayout = () => {
           {NAV
             .filter((item) => {
               if (item.adminOnly) return isFullAdmin;
-              if (isEmployee && employeePerms) return employeePerms.includes(item.pageKey) || !item.pageKey;
+              if (isEmployee) {
+                if (item.pageKey) return visiblePerms.includes(item.pageKey);
+                return visiblePerms.length > 0; // Overview: show only if employee has any perm
+              }
               return true;
             })
             .map((item) => (

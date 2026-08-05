@@ -10,7 +10,14 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (authService.isAuthenticated()) {
       authService.getProfile()
-        .then((res) => setUser(res.data))
+        .then((res) => {
+          setUser(res.data);
+          if (Array.isArray(res.data.employee_permissions)) {
+            localStorage.setItem("employee_permissions", JSON.stringify(res.data.employee_permissions));
+          } else {
+            localStorage.removeItem("employee_permissions");
+          }
+        })
         .catch(() => {
           localStorage.removeItem("access_token");
           localStorage.removeItem("refresh_token");
@@ -21,8 +28,8 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const login = async (email, password) => {
-    const data = await authService.login(email, password);
+  const login = async (phone, password) => {
+    const data = await authService.login(phone, password);
     setUser(data.user || (await authService.getProfile()).data);
     return data;
   };

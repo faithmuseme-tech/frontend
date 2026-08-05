@@ -8,7 +8,7 @@ const authService = {
     const res = await api.post("/auth/login/", { phone, password });
     localStorage.setItem("access_token", res.data.access);
     localStorage.setItem("refresh_token", res.data.refresh);
-    if (res.data.employee_permissions) {
+    if (Array.isArray(res.data.employee_permissions)) {
       localStorage.setItem("employee_permissions", JSON.stringify(res.data.employee_permissions));
     } else {
       localStorage.removeItem("employee_permissions");
