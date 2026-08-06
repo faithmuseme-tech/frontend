@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { FiMessageCircle, FiShield, FiCornerUpLeft } from "react-icons/fi";
+import { FiMessageCircle, FiShield, FiCornerUpLeft, FiClock, FiAlertCircle } from "react-icons/fi";
 import api from "../../../services/api";
 import { useAuth } from "../../../context/AuthContext";
 import ChatAttachment from "../../../components/Chat/ChatAttachment";
@@ -48,6 +48,7 @@ const TraderChat = () => {
     try {
       const r = await api.get("/chat/my/");
       setMessages(r.data.messages || []);
+      if (!silent) window.dispatchEvent(new Event("chat-unread-cleared"));
     } catch {}
     finally { if (!silent) setLoading(false); }
   }, []);
@@ -74,15 +75,42 @@ const TraderChat = () => {
   const send = async (formData) => {
     if (sending) return false;
     setSending(true);
+    const tempId = `temp_${Date.now()}`;
+    const body = formData.get("body") || "";
+    const file = formData.get("file");
+    const replyToId = formData.get("reply_to");
+    const tempMsg = {
+      id: tempId,
+      sender: user?.id,
+      sender_name: user?.username || user?.email,
+      body,
+      file_url: file && file.type?.startsWith("image/") ? URL.createObjectURL(file) : "",
+      file_type: file ? (file.type?.startsWith("image/") ? "image" : file.type?.startsWith("video/") ? "video" : file.type?.startsWith("audio/") ? "audio" : "doc") : "",
+      file_name: file?.name || "",
+      reply_to: replyToId ? messages.find(m => String(m.id) === String(replyToId)) || null : null,
+      is_read: false, is_edited: false, is_deleted: false,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    justSent.current = true;
+    setMessages((prev) => [...prev, tempMsg]);
+    setReplyTo(null);
     try {
-      const r = await api.post("/chat/my/", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      justSent.current = true;
-      setMessages((prev) => [...prev, r.data]);
-      setReplyTo(null);
-    } catch { return false; }
-    finally { setSending(false); }
+      const r = await api.post("/chat/my/", formData, { headers: { "Content-Type": "multipart/form-data" } });
+      setMessages((prev) => prev.map(m => m.id === tempId ? r.data : m));
+      return true;
+    } catch {
+      setMessages((prev) => prev.map(m => m.id === tempId ? { ...m, _pending: false, _failed: true } : m));
+      return false;
+    } finally { setSending(false); }
+  };
+
+  const retrySend = async (tempMsg) => {
+    setMessages((prev) => prev.filter(m => m.id !== tempMsg.id));
+    const fd = new FormData();
+    if (tempMsg.body) fd.append("body", tempMsg.body);
+    if (tempMsg.reply_to) fd.append("reply_to", tempMsg.reply_to.id);
+    await send(fd);
   };
 
   const grouped = messages.reduce((acc, msg) => {
@@ -166,10 +194,23 @@ const TraderChat = () => {
                       <div className={`flex items-center gap-1 px-1 ${isMe ? "justify-end" : "justify-start"}`}>
                         <span className="text-xs text-gray-400">{fmtTime(msg.created_at)}</span>
                         {isMe && (
-                          <svg width="16" height="11" viewBox="0 0 16 11" fill="none" className="flex-shrink-0">
-                            <path d="M1 5.5L4.5 9L10 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                            <path d="M5 5.5L8.5 9L14 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                          msg._failed ? (
+                            <button
+                              onClick={() => retrySend(msg)}
+                              className="flex items-center gap-0.5 text-red-400 hover:text-red-600"
+                              title="Failed — tap to retry"
+                            >
+                              <FiAlertCircle size={13} />
+                              <span className="text-xs">Retry</span>
+                            </button>
+                          ) : msg._pending ? (
+                            <FiClock size={12} className="text-gray-400 flex-shrink-0" />
+                          ) : (
+                            <svg width="16" height="11" viewBox="0 0 16 11" fill="none" className="flex-shrink-0">
+                              <path d="M1 5.5L4.5 9L10 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M5 5.5L8.5 9L14 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )
                         )}
                       </div>
                     </div>

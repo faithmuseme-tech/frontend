@@ -5,13 +5,20 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
@@ -21,12 +28,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
+
+      - name: Cache node_modules
+        id: cache-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('package-lock.json') }}
 
       - name: Install dependencies
+        if: steps.cache-modules.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Generate PNG icons and favicon from SVG
+      - name: Cache sharp + icons
+        id: cache-icons
+        uses: actions/cache@v4
+        with:
+          path: |
+            public/favicon-64.png
+            public/logo192.png
+            public/logo512.png
+          key: icons-${{ hashFiles('public/logo.svg', 'scripts/generate-icons.js') }}
+
+      - name: Generate icons
+        if: steps.cache-icons.outputs.cache-hit != 'true'
         run: npm install --no-save sharp && node scripts/generate-icons.js
 
       - name: Build
@@ -34,8 +59,14 @@ jobs:
           REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
         run: npm run build
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build
+          path: ./build
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

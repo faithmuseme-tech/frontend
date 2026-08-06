@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import adminService from "../../../services/adminService";
-import { FiCheckCircle, FiX, FiSearch, FiPackage, FiUser, FiMapPin, FiTruck, FiShoppingBag } from "react-icons/fi";
+import { FiCheckCircle, FiX, FiSearch, FiPackage, FiUser, FiMapPin, FiTruck, FiShoppingBag, FiShield, FiAward, FiTag } from "react-icons/fi";
 import { formatUGX } from "../../../utils/currency";
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const STATUS_PILL = {
   pending:   "bg-yellow-100 text-yellow-700",
@@ -20,8 +22,15 @@ const fmtDate = (d) => new Date(d).toLocaleString("en-UG", { day: "numeric", mon
 const OrderDetailModal = ({ order, onClose, onStatusChange, updating }) => {
   if (!order) return null;
 
-  const subtotal = order.items.reduce((s, i) => s + parseFloat(i.subtotal), 0);
-  const delivery = order.delivery_fee ?? 0;
+  const subtotal       = parseFloat(order.subtotal) > 0
+    ? parseFloat(order.subtotal)
+    : order.items.reduce((s, i) => s + parseFloat(i.subtotal), 0);
+  const delivery       = parseFloat(order.delivery_fee ?? 0);
+  const couponDiscount = parseFloat(order.coupon_discount ?? 0);
+  const pointsDiscount = parseFloat(order.points_discount ?? 0);
+  const pointsUsed     = parseInt(order.points_used ?? 0);
+  const couponCode     = order.coupon_code_used || null;
+  const grandTotal     = parseFloat(order.total_price);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -45,6 +54,20 @@ const OrderDetailModal = ({ order, onClose, onStatusChange, updating }) => {
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          {/* Secret word */}
+          {order.secret_word && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 flex-shrink-0">
+                <FiShield />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 uppercase tracking-wide">Secret Word</p>
+                <p className="text-lg font-extrabold text-indigo-700 tracking-widest">{order.secret_word}</p>
+                <p className="text-xs text-gray-400">Use this to verify the customer when they call</p>
+              </div>
+            </div>
+          )}
 
           {/* Customer */}
           <div className="bg-gray-50 rounded-2xl p-4 flex items-start gap-3">
@@ -93,7 +116,7 @@ const OrderDetailModal = ({ order, onClose, onStatusChange, updating }) => {
                   {/* Image */}
                   <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-200 flex-shrink-0">
                     {item.product_image ? (
-                      <img src={item.product_image} alt={item.product_name} className="w-full h-full object-cover" />
+                      <img src={toAbsolute(item.product_image)} alt={item.product_name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-400">
                         <FiShoppingBag />
@@ -114,19 +137,89 @@ const OrderDetailModal = ({ order, onClose, onStatusChange, updating }) => {
             </div>
           </div>
 
+          {/* Rewards & Discounts */}
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-4 space-y-3">
+            <p className="text-xs font-bold text-orange-700 uppercase tracking-wide flex items-center gap-1.5">
+              <FiAward className="text-orange-500" /> Rewards & Discounts
+            </p>
+
+            {/* Coupon row */}
+            <div className="flex items-start gap-3 bg-white/70 rounded-xl p-3">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                couponDiscount > 0 ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-400"
+              }`}>
+                <FiTag />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-gray-800">Coupon</p>
+                {couponDiscount > 0 ? (
+                  <>
+                    {couponCode && (
+                      <p className="text-xs font-mono bg-gray-100 inline-block px-2 py-0.5 rounded mt-0.5 text-gray-600">{couponCode}</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-0.5">Discount off product subtotal</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-0.5">No coupon used on this order</p>
+                )}
+              </div>
+              <p className={`text-sm font-extrabold flex-shrink-0 ${
+                couponDiscount > 0 ? "text-green-600" : "text-gray-300"
+              }`}>
+                {couponDiscount > 0 ? `−${formatUGX(couponDiscount)}` : "—"}
+              </p>
+            </div>
+
+            {/* Loyalty points row */}
+            <div className="flex items-start gap-3 bg-white/70 rounded-xl p-3">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                pointsDiscount > 0 ? "bg-orange-100 text-orange-600" : "bg-gray-100 text-gray-400"
+              }`}>
+                <FiAward />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold text-gray-800">Loyalty Points</p>
+                {pointsDiscount > 0 ? (
+                  <p className="text-xs text-gray-500 mt-0.5">{pointsUsed} pts redeemed · off delivery fee</p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-0.5">No loyalty points used on this order</p>
+                )}
+              </div>
+              <p className={`text-sm font-extrabold flex-shrink-0 ${
+                pointsDiscount > 0 ? "text-orange-600" : "text-gray-300"
+              }`}>
+                {pointsDiscount > 0 ? `−${formatUGX(pointsDiscount)}` : "—"}
+              </p>
+            </div>
+          </div>
+
           {/* Price summary */}
           <div className="bg-gradient-to-br from-indigo-50 to-cyan-50 rounded-2xl p-4 space-y-2">
             <div className="flex justify-between text-sm text-gray-600">
               <span>Subtotal</span>
               <span>{formatUGX(subtotal)}</span>
             </div>
-            <div className="flex justify-between text-sm text-gray-600">
-              <span className="flex items-center gap-1"><FiTruck className="text-xs" /> Delivery Fee</span>
-              <span>{delivery === 0 ? <span className="text-green-600 font-semibold">Free</span> : formatUGX(delivery)}</span>
-            </div>
+            {delivery > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span className="flex items-center gap-1"><FiTruck className="text-xs" /> Delivery Fee</span>
+                <span>{formatUGX(delivery)}</span>
+              </div>
+            )}
+            {couponDiscount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span className="flex items-center gap-1"><FiTag className="text-xs" /> Coupon Discount{couponCode ? ` (${couponCode})` : ""}</span>
+                <span>−{formatUGX(couponDiscount)}</span>
+              </div>
+            )}
+            {pointsDiscount > 0 && (
+              <div className="flex justify-between text-sm text-orange-600">
+                <span className="flex items-center gap-1"><FiAward className="text-xs" /> Points Discount ({pointsUsed} pts)</span>
+                <span>−{formatUGX(pointsDiscount)}</span>
+              </div>
+            )}
             <div className="border-t border-indigo-100 pt-2 flex justify-between text-sm font-extrabold text-gray-900">
-              <span>Total</span>
-              <span>{formatUGX(parseFloat(order.total_price) + delivery)}</span>
+              <span>Grand Total</span>
+              <span>{formatUGX(grandTotal)}</span>
             </div>
           </div>
 
@@ -140,20 +233,30 @@ const OrderDetailModal = ({ order, onClose, onStatusChange, updating }) => {
         {/* Footer — status update */}
         <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3 flex-wrap">
           <p className="text-xs font-semibold text-gray-500 mr-auto">Update Status:</p>
-          {['confirmed', 'shipped', 'pickup', 'delivered', 'cancelled'].map((s) => (
-            <button
-              key={s}
-              disabled={order.status === s || updating}
-              onClick={() => onStatusChange(order.id, s)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors disabled:opacity-40 ${
-                order.status === s
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600"
-              }`}
-            >
-              {s === "pickup" ? "Ready for Pickup" : s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
+          {['confirmed', 'shipped', 'pickup', 'delivered', 'cancelled'].map((s) => {
+            const isActive = order.status === s;
+            const activeColors = {
+              confirmed: "bg-blue-600 text-white",
+              shipped:   "bg-indigo-600 text-white",
+              pickup:    "bg-orange-500 text-white",
+              delivered: "bg-green-600 text-white",
+              cancelled: "bg-red-500 text-white",
+            };
+            return (
+              <button
+                key={s}
+                disabled={isActive || updating}
+                onClick={() => onStatusChange(order.id, s)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors disabled:opacity-60 ${
+                  isActive
+                    ? activeColors[s]
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {s === "pickup" ? "Ready for Pickup" : s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -162,14 +265,23 @@ const OrderDetailModal = ({ order, onClose, onStatusChange, updating }) => {
 
 /* ── Main Page ── */
 const AdminOrders = () => {
+  const [searchParams] = useSearchParams();
   const [orders, setOrders]         = useState([]);
   const [loading, setLoading]       = useState(true);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
   const [searchValue, setSearchValue]   = useState("");
   const [searching, setSearching]       = useState(false);
   const [searchError, setSearchError]   = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [updating, setUpdating]         = useState(false);
+  const [updating, setUpdating]           = useState(false);
+
+  const openOrder = async (order) => {
+    setSelectedOrder(order);
+    try {
+      const res = await adminService.getOrder(order.id);
+      setSelectedOrder(res.data);
+    } catch {}
+  };
 
   const loadOrders = (sf = statusFilter) => {
     setLoading(true);
@@ -278,10 +390,22 @@ const AdminOrders = () => {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {orders.map((order) => (
-                <tr key={order.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setSelectedOrder(order)}>
+                <tr key={order.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => openOrder(order)}>
                   <td className="px-5 py-4">
                     <p className="font-bold text-gray-900">#{shortId(order.order_number)}</p>
                     <p className="text-xs text-gray-400">{order.items?.length} item{order.items?.length !== 1 ? "s" : ""}</p>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {parseFloat(order.coupon_discount) > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
+                          <FiTag className="text-[9px]" /> Coupon
+                        </span>
+                      )}
+                      {parseFloat(order.points_discount) > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">
+                          <FiAward className="text-[9px]" /> Points
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-5 py-4 hidden sm:table-cell">
                     <p className="font-medium text-gray-800">{order.customer?.full_name || "—"}</p>
@@ -298,7 +422,7 @@ const AdminOrders = () => {
                   </td>
                   <td className="px-5 py-4 text-right">
                     <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }}
+                      onClick={(e) => { e.stopPropagation(); openOrder(order); }}
                       className="text-xs font-semibold text-indigo-600 hover:underline"
                     >
                       View

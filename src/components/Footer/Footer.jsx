@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import {
-  FiMail, FiPhone, FiMapPin, FiShoppingBag,
+  FiMail, FiPhone,
   FiFacebook, FiTwitter, FiInstagram, FiYoutube,
 } from "react-icons/fi";
 import { FaWhatsapp, FaTiktok } from "react-icons/fa";
@@ -14,22 +14,24 @@ const footerLinks = {
     { label: "Contact Us", to: "/contact" },
   ],
   "Customer Service": [
-    { label: "Shipping Info", to: "/shipping" },
+    { label: "Help Center",      to: "/help" },
+    { label: "Shipping Info",    to: "/shipping" },
     { label: "Returns & Refunds", to: "/returns" },
-    { label: "FAQs", to: "/faqs" },
-    { label: "How to Pay", to: "/how-to-pay" },
+    { label: "FAQs",             to: "/faqs" },
+    { label: "How to Pay",       to: "/how-to-pay" },
   ],
   Shopping: [
     { label: "All Categories", to: "/categories" },
     { label: "Top Brands", to: "/brands" },
     { label: "New Arrivals", to: "/new-arrivals" },
     { label: "Shop", to: "/shop" },
+    { label: "Loyalty Rewards", to: "/loyalty" },
   ],
   Legal: [
-    { label: "Privacy Policy", to: "/privacy" },
-    { label: "Terms & Conditions", to: "/terms" },
-    { label: "Shipping & Delivery", to: "/shipping" },
-    { label: "Returns & Refunds", to: "/returns" },
+    { label: "Privacy Policy",      to: "/privacy" },
+    { label: "Terms & Conditions",   to: "/terms" },
+    { label: "Cookie Notice",        to: "/cookie-notice" },
+    { label: "Cookie Preferences",   to: "/cookie-preferences" },
   ],
 };
 
@@ -46,6 +48,7 @@ const Footer = () => {
   const { sellerOpen } = useSiteSettings();
 
   return (
+
     <footer className="bg-gray-900 text-gray-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14">
         <div className="grid grid-cols-1 lg:grid-cols-6 gap-10">
@@ -55,36 +58,17 @@ const Footer = () => {
               <CartPulseLogo size={36} textClass="text-xl font-extrabold" dark />
             </Link>
             <p className="text-sm text-gray-400 leading-relaxed mb-5">
-              CartPulse is Uganda's trusted marketplace and delivery platform — connecting you with verified traders, genuine products, and reliable delivery right to your nearest pick-up point.
+              CartPulse is Uganda's trusted online store — we source, verify, and sell quality electronics, STEM products, and everyday essentials with reliable delivery across Uganda.
             </p>
             <div className="flex flex-col gap-2 text-sm">
-              <a href="mailto:balanceiq81@gmail.com" className="flex items-center gap-2 hover:text-primary-400 transition-colors">
-                <FiMail className="text-primary-500 flex-shrink-0" /> balanceiq81@gmail.com
+              <a href="mailto:information.cartpulse@gmail.com" className="flex items-center gap-2 hover:text-primary-400 transition-colors">
+                <FiMail className="text-primary-500 flex-shrink-0" /> information.cartpulse@gmail.com
               </a>
               <a href="tel:+256794448439" className="flex items-center gap-2 hover:text-primary-400 transition-colors">
                 <FiPhone className="text-primary-500 flex-shrink-0" /> +256 794 448 439
               </a>
-              <a href="tel:+256706721334" className="flex items-center gap-2 hover:text-primary-400 transition-colors">
-                <FiPhone className="text-primary-500 flex-shrink-0" /> +256 706 721 334
-              </a>
-              <span className="flex items-center gap-2">
-                <FiMapPin className="text-primary-500 flex-shrink-0" />
-                <span>
-                  <span className="text-white font-semibold">Main Office:</span> Fort Portal, Uganda
-                </span>
-              </span>
-              <span className="flex items-center gap-2">
-                <FiMapPin className="text-primary-500 flex-shrink-0" /> Kampala, Uganda
-              </span>
+
             </div>
-            {sellerOpen && (
-              <Link
-                to="/trader/register"
-                className="mt-5 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all"
-              >
-                <FiShoppingBag /> Sell with CartPulse
-              </Link>
-            )}
           </div>
 
           {/* Links — 2 cols on mobile, 4 on lg */}
@@ -100,6 +84,14 @@ const Footer = () => {
                       </Link>
                     </li>
                   ))}
+                  {/* Sell with CartPulse — only in Company column, controlled by admin */}
+                  {title === "Company" && sellerOpen && (
+                    <li>
+                      <Link to="/trader/register" className="text-sm text-orange-400 hover:text-orange-300 font-semibold transition-colors">
+                        Sell with CartPulse
+                      </Link>
+                    </li>
+                  )}
                 </ul>
               </div>
             ))}
@@ -110,7 +102,7 @@ const Footer = () => {
         <div className="mt-12 pt-8 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-sm text-gray-500 space-y-1 text-center sm:text-left">
             <p>© {new Date().getFullYear()} CartPulse. All rights reserved.</p>
-            <p className="text-xs text-gray-600">Marketplace &amp; Delivery Platform — Uganda</p>
+            <p className="text-xs text-gray-600">Online Store &amp; Delivery — Uganda</p>
           </div>
 
           {/* Social icons */}
@@ -129,11 +121,7 @@ const Footer = () => {
             ))}
           </div>
 
-          {/* Payment */}
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <FiPhone className="text-green-500" />
-            <span>Mobile Money: <span className="text-green-400 font-semibold">0794 448 439</span> (Sabira Ssemata)</span>
-          </div>
+
         </div>
       </div>
     </footer>

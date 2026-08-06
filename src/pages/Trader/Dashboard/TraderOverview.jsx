@@ -6,6 +6,7 @@ import {
   FiPackage, FiPlusCircle, FiTrendingUp, FiAlertCircle,
   FiShoppingBag, FiDollarSign,
 } from "react-icons/fi";
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const StatCard = ({ label, value, icon, color, loading }) => (
   <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center gap-3">
@@ -102,7 +103,7 @@ const TraderOverview = () => {
               <div key={p.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gray-200 overflow-hidden flex-shrink-0">
                   {p.primary_image && (
-                    <img src={p.primary_image} alt={p.name} className="w-full h-full object-cover" />
+                    <img src={toAbsolute(p.primary_image)} alt={p.name} className="w-full h-full object-cover" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">

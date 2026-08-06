@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import adminService from "../../../services/adminService";
-import { FiPower, FiEdit2, FiTrash2, FiX, FiPlus, FiSave, FiImage, FiChevronDown } from "react-icons/fi";
+import { FiPower, FiEdit2, FiTrash2, FiX, FiSave, FiImage, FiChevronDown } from "react-icons/fi";
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const EMPTY_FORM = {
   name: "", description: "", trader_price: "", original_price: "",
@@ -182,17 +184,21 @@ const CategoryFields = ({ categoryType, catSpecs, onChange }) => {
   );
 };
 const AdminProducts = () => {
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get("highlight");
+  const filterParam = searchParams.get("filter"); // "inactive" | "low_stock"
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [brands, setBrands] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [editing, setEditing] = useState(null);       // full product object
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [imgUploading, setImgUploading] = useState(false);
   const [search, setSearch] = useState("");
   const [catSpecs, setCatSpecs] = useState({});
   const fileRef = useRef();
+  const highlightRef = useRef();
 
   const load = async () => {
     setLoading(true);
@@ -296,18 +302,33 @@ const AdminProducts = () => {
     setEditing((prev) => ({ ...prev, images: prev.images.filter((i) => i.id !== imageId) }));
   };
 
-  const filtered = products.filter((p) =>
-    p.name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.category_name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.brand_name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = products.filter((p) => {
+    if (filterParam === "inactive" && p.is_active) return false;
+    if (filterParam === "low_stock" && (p.stock === null || p.stock > 30)) return false;
+    return (
+      p.name?.toLowerCase().includes(search.toLowerCase()) ||
+      p.category_name?.toLowerCase().includes(search.toLowerCase()) ||
+      p.brand_name?.toLowerCase().includes(search.toLowerCase())
+    );
+  });
+
+  // Scroll highlighted product into view after load
+  useEffect(() => {
+    if (highlightId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightId, filtered]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900">Products</h1>
-          <p className="text-sm text-gray-500 mt-1">View, edit, and manage all trader products.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            View, edit, and manage all trader products.
+            {filterParam === "inactive" && <span className="ml-2 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Showing inactive only</span>}
+            {filterParam === "low_stock" && <span className="ml-2 text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Showing low stock (≤30)</span>}
+          </p>
         </div>
         <input
           value={search}
@@ -338,7 +359,13 @@ const AdminProducts = () => {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50 transition-colors">
+                <tr
+                  key={product.id}
+                  ref={String(product.id) === String(highlightId) ? highlightRef : null}
+                  className={`hover:bg-gray-50 transition-colors ${
+                    String(product.id) === String(highlightId) ? "ring-2 ring-inset ring-indigo-400 bg-indigo-50" : ""
+                  }`}
+                >
                   <td className="px-5 py-4">
                     <p className="font-semibold text-gray-800">{product.name}</p>
                     <p className="text-xs text-gray-400">{product.category_name}</p>
@@ -401,7 +428,7 @@ const AdminProducts = () => {
                 <div className="flex flex-wrap gap-3 mb-3">
                   {(editing.images || []).map((img) => (
                     <div key={img.id} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-gray-200">
-                      <img src={img.image} alt="" className="w-full h-full object-cover" />
+                      <img src={toAbsolute(img.image)} alt="" className="w-full h-full object-cover" />
                       <button
                         onClick={() => handleDeleteImage(img.id)}
                         className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"

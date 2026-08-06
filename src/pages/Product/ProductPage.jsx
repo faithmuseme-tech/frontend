@@ -18,10 +18,9 @@ import { formatUGX } from "../../utils/currency";
 import api from "../../services/api";
 import productService from "../../services/productService";
 import useBehaviorTracker from "../../hooks/useBehaviorTracker";
+import { toAbsolute } from "../../utils/imageUrl";
 
-const API_BASE    = process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://127.0.0.1:8000';
 const SHARE_BASE  = process.env.REACT_APP_API_URL?.replace('/api/v1', '');
-const toAbsolute  = (url) => (!url ? '' : url.startsWith('http') ? url : `${API_BASE}${url}`);
 
 // ── Description with Read More ────────────────────────────────────────────────
 const DescriptionTab = ({ description }) => {
@@ -101,7 +100,7 @@ const ProductPage = () => {
   const { slug } = useParams();
   useBehaviorTracker(slug);
   const navigate = useNavigate();
-  const { addItem } = useCart();
+  const { addItem, items: cartItems } = useCart();
   const { toggle, isWishlisted } = useWishlist();
   const { user } = useAuth();
 
@@ -118,6 +117,7 @@ const ProductPage = () => {
   const [copied, setCopied] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const shareRef = useRef(null);
+  const touchStartX = useRef(0);
   const [related, setRelated] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [reviewForm, setReviewForm] = useState({ rating: 5, title: "", body: "" });
@@ -188,6 +188,29 @@ const ProductPage = () => {
       .finally(() => setLoading(false));
   }, [slug]);
 
+  // Refresh product data on stock-update event or every 60s
+  useEffect(() => {
+    if (!slug) return;
+    const refresh = () => {
+      api.get(`/products/${slug}/`)
+        .then((res) => {
+          const p = res.data;
+          setProduct((prev) => prev ? {
+            ...prev,
+            inStock: p.in_stock,
+            stock:   p.stock ?? 0,
+          } : prev);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('product-stock-updated', refresh);
+    const interval = setInterval(refresh, 60000);
+    return () => {
+      window.removeEventListener('product-stock-updated', refresh);
+      clearInterval(interval);
+    };
+  }, [slug]);
+
   // Load reviews when tab opened
   useEffect(() => {
     if (activeTab !== "reviews" || !product) return;
@@ -216,6 +239,17 @@ const ProductPage = () => {
 
   // Keep ref in sync so confirmSelection always reads the live index
   useEffect(() => { activeImgRef.current = activeImg; }, [activeImg]);
+
+  // Keyboard arrow navigation for images
+  useEffect(() => {
+    if (images.length <= 1) return;
+    const handler = (e) => {
+      if (e.key === "ArrowRight") setActiveImg((p) => (p + 1) % images.length);
+      else if (e.key === "ArrowLeft") setActiveImg((p) => (p - 1 + images.length) % images.length);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [images.length]);
 
   const getCategoryType = (name) => {
     if (!name) return null;
@@ -412,7 +446,17 @@ const ProductPage = () => {
 
           {/* ── Left: Image Gallery ─────────────────────────────────────── */}
           <div className="space-y-3 min-w-0">
-            <div className="relative aspect-square bg-gray-50 rounded-2xl overflow-hidden group">
+            <div
+              className="relative aspect-square bg-gray-50 rounded-2xl overflow-hidden group"
+              onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+              onTouchEnd={(e) => {
+                const diff = touchStartX.current - e.changedTouches[0].clientX;
+                if (Math.abs(diff) > 40) {
+                  if (diff > 0) setActiveImg((p) => (p + 1) % images.length);
+                  else setActiveImg((p) => (p - 1 + images.length) % images.length);
+                }
+              }}
+            >
               <AnimatePresence mode="wait">
                 <motion.img
                   key={activeImg}
@@ -611,7 +655,7 @@ const ProductPage = () => {
               {/* Row 2: Wishlist + Share */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => toggle(product)}
+                  onClick={() => toggle(product, cartItems)}
                   aria-label="Toggle wishlist"
                   className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold transition-all duration-200 ${
                     isWishlisted(product.id)

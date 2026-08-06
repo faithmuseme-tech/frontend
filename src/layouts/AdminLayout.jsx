@@ -21,14 +21,14 @@ const AdminLayout = () => {
   const isEmployee = user?.is_staff && !user?.is_admin;
   const visiblePerms = isEmployee ? (Array.isArray(user?.employee_permissions) ? user.employee_permissions : []) : null;
 
-  // Chat unread poll
+  // Chat unread poll — full admins only
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isFullAdmin) return;
     const fetch = () => api.get("/chat/admin/unread/").then((r) => setChatUnread(r.data.count || 0)).catch(() => {});
     fetch();
     const t = setInterval(fetch, 8000);
     return () => clearInterval(t);
-  }, [user]);
+  }, [user, isFullAdmin]);
 
   // Pending orders count
   useEffect(() => {
@@ -67,7 +67,7 @@ const AdminLayout = () => {
   }, [user, location.pathname]);
 
   const NAV = [
-    { to: "/admin/dashboard",            icon: <FiGrid />,          label: "Overview" ,     end: true },
+    { to: "/admin/dashboard",            icon: <FiGrid />,          label: "Overview",      end: true, adminOnly: true },
     { to: "/admin/dashboard/insights",   icon: <FiZap />,           label: "Smart Insights", badge: insightsUnread, pageKey: "insights" },
     { to: "/admin/dashboard/users",      icon: <FiUsers />,         label: "Users",          pageKey: "users" },
     { to: "/admin/dashboard/traders",    icon: <FiBriefcase />,     label: "Traders",        pageKey: "traders" },
@@ -93,7 +93,7 @@ const AdminLayout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Sidebar — always fixed */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-60 bg-gray-900 flex flex-col transition-transform duration-200
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
@@ -156,12 +156,12 @@ const AdminLayout = () => {
       )}
 
       {/* Main — offset by sidebar width on lg */}
-      <div className="lg:ml-60 flex flex-col min-h-screen">
+      <div className="lg:ml-60 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
         <header className="bg-white border-b border-gray-100 px-4 sm:px-6 py-3 flex items-center gap-4 lg:hidden sticky top-0 z-20">
           <button onClick={() => setSidebarOpen(true)} className="text-gray-600 text-xl"><FiMenu /></button>
           <span className="font-extrabold text-gray-900">Admin Dashboard</span>
         </header>
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 overflow-x-hidden">
           <Outlet />
         </main>
       </div>

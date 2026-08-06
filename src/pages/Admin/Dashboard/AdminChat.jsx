@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
-  FiMessageCircle, FiUser, FiBriefcase, FiSearch, FiCornerUpLeft,
+  FiMessageCircle, FiUser, FiBriefcase, FiSearch, FiCornerUpLeft, FiClock, FiAlertCircle,
+  FiUserCheck, FiX, FiChevronDown,
 } from "react-icons/fi";
 import api from "../../../services/api";
 import { useAuth } from "../../../context/AuthContext";
@@ -24,16 +25,109 @@ const ReplyPreview = ({ reply, isMe }) => {
   );
 };
 
+/* ── Transfer Modal ─────────────────────────────────────────────────────── */
+const TransferModal = ({ room, onClose, onTransferred }) => {
+  const [assignees, setAssignees]   = useState([]);
+  const [selected, setSelected]     = useState(room.assigned_to_id ?? "");
+  const [note, setNote]             = useState("");
+  const [loading, setLoading]       = useState(true);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState("");
+
+  useEffect(() => {
+    api.get("/chat/admin/assignees/")
+      .then((r) => setAssignees(r.data || []))
+      .catch(() => setError("Failed to load staff list."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setError("");
+    try {
+      const payload = { assigned_to: selected === "" ? null : Number(selected), note };
+      const r = await api.post(`/chat/admin/rooms/${room.id}/transfer/`, payload);
+      onTransferred(r.data);
+      onClose();
+    } catch {
+      setError("Transfer failed. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-extrabold text-gray-900 text-base">Transfer Chat</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><FiX /></button>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          Assign <span className="font-semibold text-gray-700">{room.user_name}</span>'s chat to another team member.
+        </p>
+
+        {loading ? (
+          <div className="h-10 bg-gray-100 rounded-xl animate-pulse" />
+        ) : (
+          <div className="relative">
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="w-full appearance-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-200 pr-8"
+            >
+              <option value="">— Unassigned (Admin pool) —</option>
+              {assignees.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.label})
+                </option>
+              ))}
+            </select>
+            <FiChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+        )}
+
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional handoff note (visible in chat)..."
+          rows={2}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200"
+        />
+
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 font-semibold">
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving || loading}
+            className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Transferring…" : "Transfer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Main Component ─────────────────────────────────────────────────────── */
 const AdminChat = () => {
-  const { user: _user } = useAuth();
-  const [rooms, setRooms]           = useState([]);
-  const [activeRoom, setActiveRoom] = useState(null);
-  const [messages, setMessages]     = useState([]);
+  const { user } = useAuth();
+  const [rooms, setRooms]               = useState([]);
+  const [activeRoom, setActiveRoom]     = useState(null);
+  const [messages, setMessages]         = useState([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [loadingMsgs, setLoadingMsgs]   = useState(false);
   const [sending, setSending]           = useState(false);
   const [search, setSearch]             = useState("");
   const [replyTo, setReplyTo]           = useState(null);
+  const [transferRoom, setTransferRoom] = useState(null); // room object for modal
   const bottomRef                       = useRef(null);
   const scrollRef                       = useRef(null);
   const pollRef                         = useRef(null);
@@ -102,15 +196,49 @@ const AdminChat = () => {
   const send = async (formData) => {
     if (sending || !activeRoom) return false;
     setSending(true);
+    const tempId = `temp_${Date.now()}`;
+    const body = formData.get("body") || "";
+    const file = formData.get("file");
+    const replyToId = formData.get("reply_to");
+    const tempMsg = {
+      id: tempId,
+      sender: user?.id,
+      sender_name: user?.username || user?.email,
+      is_admin_msg: true,
+      body,
+      file_url: file && file.type?.startsWith("image/") ? URL.createObjectURL(file) : "",
+      file_type: file ? (file.type?.startsWith("image/") ? "image" : file.type?.startsWith("video/") ? "video" : file.type?.startsWith("audio/") ? "audio" : "doc") : "",
+      file_name: file?.name || "",
+      reply_to: replyToId ? messages.find(m => String(m.id) === String(replyToId)) || null : null,
+      is_read: false, is_edited: false, is_deleted: false,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    justSent.current = true;
+    setMessages((prev) => [...prev, tempMsg]);
+    setReplyTo(null);
     try {
-      const r = await api.post(`/chat/admin/rooms/${activeRoom}/`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      justSent.current = true;
-      setMessages((prev) => [...prev, r.data]);
-      setReplyTo(null);
-    } catch { return false; }
-    finally { setSending(false); }
+      const r = await api.post(`/chat/admin/rooms/${activeRoom}/`, formData, { headers: { "Content-Type": "multipart/form-data" } });
+      setMessages((prev) => prev.map(m => m.id === tempId ? r.data : m));
+      return true;
+    } catch {
+      setMessages((prev) => prev.map(m => m.id === tempId ? { ...m, _pending: false, _failed: true } : m));
+      return false;
+    } finally { setSending(false); }
+  };
+
+  const retrySend = async (tempMsg) => {
+    setMessages((prev) => prev.filter(m => m.id !== tempMsg.id));
+    const fd = new FormData();
+    if (tempMsg.body) fd.append("body", tempMsg.body);
+    if (tempMsg.reply_to) fd.append("reply_to", tempMsg.reply_to.id);
+    await send(fd);
+  };
+
+  const handleTransferred = (updatedRoom) => {
+    setRooms((prev) => prev.map((r) => r.id === updatedRoom.id ? { ...r, ...updatedRoom } : r));
+    // Refresh messages to show the handoff note
+    fetchRoom(updatedRoom.id, true);
   };
 
   const filteredRooms = rooms.filter((r) =>
@@ -183,9 +311,14 @@ const AdminChat = () => {
                     )}
                   </div>
                   <p className="text-xs text-gray-400 truncate">{room.last_message?.body || "No messages yet"}</p>
-                  <span className={`text-xs font-semibold capitalize ${room.role === "trader" ? "text-amber-600" : "text-indigo-500"}`}>
-                    {room.role}
-                  </span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className={`text-xs font-semibold capitalize ${room.role === "trader" ? "text-amber-600" : "text-indigo-500"}`}>
+                      {room.role}
+                    </span>
+                    {room.assigned_to_name && (
+                      <span className="text-xs text-gray-400 truncate">· {room.assigned_to_name}</span>
+                    )}
+                  </div>
                 </div>
               </button>
             ))
@@ -217,10 +350,25 @@ const AdminChat = () => {
                   ? <FiBriefcase className="text-amber-600 text-sm" />
                   : <FiUser className="text-indigo-600 text-sm" />}
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="font-bold text-gray-900 text-sm">{activeRoomData?.user_name}</p>
-                <p className="text-xs text-gray-400">{activeRoomData?.user_email} · <span className="capitalize">{activeRoomData?.role}</span></p>
+                <p className="text-xs text-gray-400 truncate">
+                  {activeRoomData?.user_email} · <span className="capitalize">{activeRoomData?.role}</span>
+                  {activeRoomData?.assigned_to_name && (
+                    <span className="ml-1 text-indigo-500 font-semibold">· {activeRoomData.assigned_to_name}</span>
+                  )}
+                </p>
               </div>
+              {/* Transfer button — full admin only */}
+              {user?.is_admin && (
+                <button
+                  onClick={() => setTransferRoom(activeRoomData)}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-indigo-600 border border-gray-200 hover:border-indigo-300 px-3 py-1.5 rounded-xl transition-colors flex-shrink-0"
+                  title="Transfer chat to another team member"
+                >
+                  <FiUserCheck size={13} /> Transfer
+                </button>
+              )}
             </div>
 
             {/* Messages */}
@@ -242,10 +390,18 @@ const AdminChat = () => {
                       <div className="flex-1 h-px bg-gray-100" />
                     </div>
                     {msgs.map((msg) => {
-                      const isAdmin = msg.is_admin_msg;
+                      const isAdminMsg = msg.is_admin_msg;
+                      const isTransferNote = msg.body?.startsWith("🔁 Transferred:");
+                      if (isTransferNote) {
+                        return (
+                          <div key={msg.id} className="flex justify-center">
+                            <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full">{msg.body}</span>
+                          </div>
+                        );
+                      }
                       return (
-                        <div key={msg.id} className={`flex group ${isAdmin ? "justify-end" : "justify-start"}`}>
-                          {!isAdmin && (
+                        <div key={msg.id} className={`flex group ${isAdminMsg ? "justify-end" : "justify-start"}`}>
+                          {!isAdminMsg && (
                             <button
                               onClick={() => setReplyTo({ ...msg, sender_name: msg.sender_name })}
                               className="opacity-0 group-hover:opacity-100 self-center mr-2 text-gray-400 hover:text-indigo-500 transition-all"
@@ -256,35 +412,48 @@ const AdminChat = () => {
                           )}
 
                           <div className="max-w-[75%] space-y-1">
-                            {!isAdmin && (
+                            {!isAdminMsg && (
                               <p className="text-xs text-gray-400 font-semibold px-1">{msg.sender_name}</p>
                             )}
                             <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                              isAdmin
+                              isAdminMsg
                                 ? "bg-indigo-600 text-white rounded-br-sm"
                                 : "bg-gray-100 text-gray-800 rounded-bl-sm"
                             }`}>
-                              <ReplyPreview reply={msg.reply_to} isMe={isAdmin} />
+                              <ReplyPreview reply={msg.reply_to} isMe={isAdminMsg} />
                               {msg.body && <p>{msg.body}</p>}
                               <ChatAttachment
                                 fileUrl={msg.file_url}
                                 fileType={msg.file_type}
                                 fileName={msg.file_name}
-                                isMe={isAdmin}
+                                isMe={isAdminMsg}
                               />
                             </div>
-                            <div className={`flex items-center gap-1 px-1 ${isAdmin ? "justify-end" : "justify-start"}`}>
+                            <div className={`flex items-center gap-1 px-1 ${isAdminMsg ? "justify-end" : "justify-start"}`}>
                               <span className="text-xs text-gray-400">{fmtTime(msg.created_at)}</span>
-                              {isAdmin && (
-                                <svg width="16" height="11" viewBox="0 0 16 11" fill="none" className="flex-shrink-0">
-                                  <path d="M1 5.5L4.5 9L10 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M5 5.5L8.5 9L14 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
+                              {isAdminMsg && (
+                                msg._failed ? (
+                                  <button
+                                    onClick={() => retrySend(msg)}
+                                    className="flex items-center gap-0.5 text-red-400 hover:text-red-600"
+                                    title="Failed — tap to retry"
+                                  >
+                                    <FiAlertCircle size={13} />
+                                    <span className="text-xs">Retry</span>
+                                  </button>
+                                ) : msg._pending ? (
+                                  <FiClock size={12} className="text-gray-400 flex-shrink-0" />
+                                ) : (
+                                  <svg width="16" height="11" viewBox="0 0 16 11" fill="none" className="flex-shrink-0">
+                                    <path d="M1 5.5L4.5 9L10 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M5 5.5L8.5 9L14 3" stroke={msg.is_read ? "#3b82f6" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                )
                               )}
                             </div>
                           </div>
 
-                          {isAdmin && (
+                          {isAdminMsg && (
                             <button
                               onClick={() => setReplyTo({ ...msg, sender_name: msg.sender_name })}
                               className="opacity-0 group-hover:opacity-100 self-center ml-2 text-gray-400 hover:text-indigo-500 transition-all"
@@ -313,6 +482,15 @@ const AdminChat = () => {
           </>
         )}
       </div>
+
+      {/* Transfer modal */}
+      {transferRoom && (
+        <TransferModal
+          room={transferRoom}
+          onClose={() => setTransferRoom(null)}
+          onTransferred={handleTransferred}
+        />
+      )}
     </div>
   );
 };

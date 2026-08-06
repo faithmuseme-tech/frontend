@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useState, useRef } from "react";
 import api from "../services/api";
 import authService from "../services/authService";
+import { toAbsolute } from "../utils/imageUrl";
 
 const CartContext = createContext();
 
@@ -9,10 +10,11 @@ const cartReducer = (state, action) => {
     case "SET": return { ...state, items: action.payload, synced: true };
     case "ADD_ITEM": {
       const exists = state.items.find((i) => i.id === action.payload.id);
+      const addQty = action.payload.qty || 1;
       if (exists) {
-        return { ...state, items: state.items.map((i) => i.id === action.payload.id ? { ...i, qty: i.qty + 1 } : i) };
+        return { ...state, items: state.items.map((i) => i.id === action.payload.id ? { ...i, qty: i.qty + addQty } : i) };
       }
-      return { ...state, items: [...state.items, { ...action.payload, qty: 1 }] };
+      return { ...state, items: [...state.items, { ...action.payload, qty: addQty }] };
     }
     case "REMOVE_ITEM":
       return { ...state, items: state.items.filter((i) => i.id !== action.payload) };
@@ -23,14 +25,6 @@ const cartReducer = (state, action) => {
     default:
       return state;
   }
-};
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace('/api/v1', '') || 'http://127.0.0.1:8000';
-
-const toAbsolute = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `${API_BASE}${url}`;
 };
 
 // Normalize backend cart items to local shape
@@ -48,8 +42,9 @@ const normalizeItems = (backendItems) =>
 
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, { items: [], synced: false });
+  const [nudgeActive, setNudgeActive] = useState(false);
 
-  // Fetch cart from backend if authenticated
+  // Fetch cart from backend if authenticated — only once per session mount
   const fetchCart = useCallback(async () => {
     if (!authService.isAuthenticated()) return;
     try {
@@ -63,10 +58,11 @@ export const CartProvider = ({ children }) => {
   useEffect(() => { fetchCart(); }, [fetchCart]);
 
   const addItem = async (product) => {
+    const qty = product.qty || 1;
     dispatch({ type: "ADD_ITEM", payload: product });
     if (authService.isAuthenticated()) {
       try {
-        const res = await api.post("/cart/", { product_id: product.id, quantity: 1, selected_options: product.selected_options || {} });
+        const res = await api.post("/cart/", { product_id: product.id, quantity: qty, selected_options: product.selected_options || {} });
         const normalized = normalizeItems(res.data.items);
         // Backend always returns primary_image — restore the chosen image for this product
         const patched = normalized.map(i => i.id === product.id ? { ...i, image: product.image } : i);
@@ -86,15 +82,20 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  const updateQty = async (id, qty) => {
-    const item = state.items.find((i) => i.id === id);
+  const updateQtyTimers = useRef({});
+
+  const updateQty = (id, qty) => {
     dispatch({ type: "UPDATE_QTY", payload: { id, qty } });
-    if (authService.isAuthenticated() && item?.cartItemId) {
+    if (!authService.isAuthenticated()) return;
+    const cartItemId = state.items.find((i) => i.id === id)?.cartItemId;
+    if (!cartItemId) return;
+    // Debounce: cancel any pending PATCH for this item and wait for the user to stop clicking
+    clearTimeout(updateQtyTimers.current[id]);
+    updateQtyTimers.current[id] = setTimeout(async () => {
       try {
-        const res = await api.patch("/cart/", { item_id: item.cartItemId, quantity: qty });
-        dispatch({ type: "SET", payload: normalizeItems(res.data.items) });
+        await api.patch("/cart/", { item_id: cartItemId, quantity: qty });
       } catch { /* keep local */ }
-    }
+    }, 400);
   };
 
   const clearCart = async () => {
@@ -108,7 +109,7 @@ export const CartProvider = ({ children }) => {
   const totalPrice = state.items.reduce((sum, i) => sum + i.price * i.qty, 0);
 
   return (
-    <CartContext.Provider value={{ items: state.items, addItem, removeItem, updateQty, clearCart, totalItems, totalPrice, fetchCart }}>
+    <CartContext.Provider value={{ items: state.items, addItem, removeItem, updateQty, clearCart, totalItems, totalPrice, fetchCart, nudgeActive, setNudgeActive }}>
       {children}
     </CartContext.Provider>
   );

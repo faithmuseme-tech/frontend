@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import traderService from "../../../services/traderService";
 import api from "../../../services/api";
-import { FiUpload, FiX, FiCheck, FiAlertCircle, FiPlus, FiTrash2, FiChevronDown } from "react-icons/fi";
+import { FiUpload, FiX, FiCheck, FiAlertCircle, FiPlus, FiTrash2, FiChevronDown, FiLoader } from "react-icons/fi";
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const Field = ({ label, error, children }) => (
   <div className="flex flex-col gap-1">
@@ -295,6 +296,8 @@ const TraderProductForm = () => {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [uploadingImages, setUploadingImages] = useState(new Set());
 
   useEffect(() => {
     api.get("/categories/").then((r) => setCategories(r.data?.results || r.data || [])).catch(() => {});
@@ -360,16 +363,15 @@ const TraderProductForm = () => {
     if (!validate()) return;
     setSubmitting(true);
     setSubmitError("");
+    setSuccessMsg("");
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
 
-      // convert specs array to object, merge with catSpecs
       const specsObj = specs.reduce((acc, row) => {
         if (row.key.trim()) acc[row.key.trim()] = row.value;
         return acc;
       }, {});
-      // merge category-specific specs (only non-empty values)
       Object.entries(catSpecs).forEach(([k, v]) => {
         if (v && v.trim()) specsObj[k] = v.trim();
       });
@@ -384,12 +386,19 @@ const TraderProductForm = () => {
         product = res.data;
       }
 
-      // Upload new images
-      for (const file of images) {
-        await traderService.uploadImage(product.id, file);
+      // Upload new images with per-image loading state
+      for (let i = 0; i < images.length; i++) {
+        setUploadingImages((prev) => new Set(prev).add(i));
+        try {
+          await traderService.uploadImage(product.id, images[i]);
+        } finally {
+          setUploadingImages((prev) => { const s = new Set(prev); s.delete(i); return s; });
+        }
       }
 
-      navigate("/trader/dashboard/products");
+      setSuccessMsg(isEdit ? "Product updated successfully!" : "Product published successfully!");
+      setImages([]);
+      setTimeout(() => navigate("/trader/dashboard/products"), 1500);
     } catch (err) {
       const data = err?.response?.data;
       if (data && typeof data === "object") {
@@ -426,6 +435,12 @@ const TraderProductForm = () => {
       {submitError && (
         <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-600">
           <FiAlertCircle className="flex-shrink-0" /> {submitError}
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-700 font-semibold">
+          <FiCheck className="flex-shrink-0" /> {successMsg}
         </div>
       )}
 
@@ -514,7 +529,7 @@ const TraderProductForm = () => {
             <div className="flex flex-wrap gap-2">
               {existingImages.map((img) => (
                 <div key={img.id} className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-200">
-                  <img src={img.image} alt="" className="w-full h-full object-cover" />
+                  <img src={toAbsolute(img.image)} alt="" className="w-full h-full object-cover" />
                   {isEdit && (
                     <button type="button" onClick={() => removeExistingImage(img.id)}
                       className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs">
@@ -532,10 +547,19 @@ const TraderProductForm = () => {
               {images.map((file, i) => (
                 <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border border-primary-200">
                   <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => removeNewImage(i)}
-                    className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs">
-                    <FiX />
-                  </button>
+                  {uploadingImages.has(i) ? (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <svg className="animate-spin w-5 h-5 text-white" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => removeNewImage(i)}
+                      className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs">
+                      <FiX />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -554,7 +578,11 @@ const TraderProductForm = () => {
           </button>
           <button type="submit" disabled={submitting}
             className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-bold px-8 py-2.5 rounded-xl text-sm transition-all disabled:opacity-60">
-            {submitting ? "Saving..." : <><FiCheck /> {isEdit ? "Save Changes" : "Publish Product"}</>}
+            {submitting
+              ? uploadingImages.size > 0
+                ? <>Uploading images ({uploadingImages.size} left)...</>
+                : "Saving..."
+              : <><FiCheck /> {isEdit ? "Save Changes" : "Publish Product"}</>}
           </button>
         </div>
       </form>

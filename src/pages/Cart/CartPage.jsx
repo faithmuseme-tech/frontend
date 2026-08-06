@@ -1,37 +1,32 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiTrash2, FiMinus, FiPlus, FiShoppingBag,
   FiArrowLeft, FiArrowRight, FiTag,
-  FiShield, FiChevronRight,
+  FiShield, FiChevronRight, FiAward,
 } from "react-icons/fi";
-import { Truck, Package, Calendar } from "lucide-react";
+import { Truck, Package, Calendar, Copy, Check, Tag, Gift } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import { formatUGX } from "../../utils/currency";
+import { toAbsolute } from "../../utils/imageUrl";
+import couponService from "../../services/couponService";
 
-// Delivery fee rules:
-// 1 product line  → UGX 10,000 × qty
-// 2+ product lines → UGX 5,000 × qty  (all regions)
-const SINGLE_FEE = 10000;
-const MULTI_FEE  = 5000;
-
-const DELIVERY_CAP = 90_000;
+// Delivery fee rules (based on total quantity across all cart items):
+// qty 0        → 0
+// qty 1–3      → UGX 15,000 flat
+// qty 4+       → UGX 15,000 + (qty - 3) × 5,000
+const BASE_FEE = 15000;
+const EXTRA_PER_UNIT = 5000;
+const BASE_QTY_LIMIT = 3;
 
 const getTotalQty = (items = []) => items.reduce((sum, i) => sum + (i.qty || 1), 0);
 
 const getDeliveryFee = (items = []) => {
-  const totalQty = getTotalQty(items);
-  if (totalQty <= 1) return SINGLE_FEE;
-  const unitsAtNormal = Math.min(totalQty, Math.floor(DELIVERY_CAP / MULTI_FEE));
-  const unitsDiscounted = totalQty - unitsAtNormal;
-  return unitsAtNormal * MULTI_FEE + unitsDiscounted * 4_500;
-};
-
-const getFeePerItem = (items = []) => {
-  const totalQty = getTotalQty(items);
-  if (totalQty <= 1) return SINGLE_FEE;
-  return MULTI_FEE * totalQty > DELIVERY_CAP ? 4_500 : MULTI_FEE;
+  const qty = getTotalQty(items);
+  if (qty === 0) return 0;
+  if (qty <= BASE_QTY_LIMIT) return BASE_FEE;
+  return BASE_FEE + (qty - BASE_QTY_LIMIT) * EXTRA_PER_UNIT;
 };
 
 const getDeliveryDate = () => {
@@ -53,12 +48,32 @@ const CartPage = () => {
   const [coupon, setCoupon] = useState("");
   const [couponMsg, setCouponMsg] = useState(null);
   const [discount, setDiscount] = useState(0);
+  const [appliedCoupon, setAppliedCoupon] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
   const [removing, setRemoving] = useState(null);
+  const [eligibility, setEligibility] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [redeemPoints, setRedeemPoints] = useState(false);
 
-  const totalQty = items.reduce((s, i) => s + i.qty, 0);
-  const feePerItem = getFeePerItem(items);
+  const fetchEligibility = useCallback(async () => {
+    if (items.length === 0) return;
+    try {
+      const res = await couponService.preview({ shipping_city: "", coupon_code: "", redeem_points: false });
+      setEligibility(res.data);
+    } catch { /* silent */ }
+  }, [items]);
+
+  useEffect(() => { fetchEligibility(); }, [fetchEligibility]);
+
+  const totalQty = getTotalQty(items);
   const shipping = getDeliveryFee(items);
-  const grandTotal = totalPrice - discount + shipping;
+  const loyalty = eligibility?.loyalty;
+  const redemptionMin = eligibility?.config?.points_redemption_minimum ?? 150;
+  const redemptionValue = eligibility?.config?.points_redemption_value ?? 100;
+  const pointsBalance = loyalty?.points_balance ?? 0;
+  const canRedeem = pointsBalance >= redemptionMin;
+  const pointsDiscount = redeemPoints && canRedeem ? Math.min(pointsBalance * redemptionValue, shipping) : 0;
+  const grandTotal = totalPrice - discount + Math.max(0, shipping - pointsDiscount);
 
   const handleRemove = (id) => {
     setRemoving(id);
@@ -67,15 +82,51 @@ const CartPage = () => {
 
   const handleQty = (id, qty) => { if (qty >= 1) updateQty(id, qty); };
 
-  const handleCoupon = () => {
-    if (coupon.trim().toUpperCase() === "SAVE10") {
-      setDiscount(Math.round(totalPrice * 0.1));
-      setCouponMsg({ ok: true, text: "10% discount applied!" });
-    } else {
-      setDiscount(0);
-      setCouponMsg({ ok: false, text: "Invalid coupon code." });
+  const handleCoupon = async () => {
+    const code = coupon.trim().toUpperCase();
+    if (!code) return;
+    setCouponLoading(true);
+    try {
+      const res = await couponService.validateCoupon(code);
+      if (res.data.valid) {
+        setDiscount(res.data.discount);
+        setAppliedCoupon(code);
+        setCouponMsg({ ok: true, text: `Coupon applied — UGX ${res.data.discount.toLocaleString()} off!` });
+      } else {
+        setDiscount(0);
+        setAppliedCoupon("");
+        setCouponMsg({ ok: false, text: res.data.error || "Invalid coupon code." });
+      }
+    } catch {
+      setCouponMsg({ ok: false, text: "Could not validate coupon. Try again." });
+    } finally {
+      setCouponLoading(false);
     }
-    setTimeout(() => setCouponMsg(null), 3000);
+  };
+
+  // Apply a code directly (used by banner button)
+  const applyCode = async (code) => {
+    setCoupon(code);
+    setCouponLoading(true);
+    try {
+      const res = await couponService.validateCoupon(code);
+      if (res.data.valid) {
+        setDiscount(res.data.discount);
+        setAppliedCoupon(code);
+        setCouponMsg({ ok: true, text: `Coupon applied — UGX ${res.data.discount.toLocaleString()} off!` });
+      } else {
+        setDiscount(0); setAppliedCoupon("");
+        setCouponMsg({ ok: false, text: res.data.error || "Invalid coupon code." });
+      }
+    } catch {
+      setCouponMsg({ ok: false, text: "Could not validate coupon. Try again." });
+    } finally { setCouponLoading(false); }
+  };
+
+  const handleCopy = (code) => {
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   // ── Empty state ───────────────────────────────────────────────────────────
@@ -103,14 +154,12 @@ const CartPage = () => {
     <div className="bg-gray-50 min-h-screen pb-16">
 
       {/* ── Breadcrumb ──────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-2 text-sm text-gray-500">
-          <Link to="/" className="hover:text-primary-600 transition-colors">Home</Link>
-          <FiChevronRight className="text-xs" />
-          <Link to="/shop" className="hover:text-primary-600 transition-colors">Shop</Link>
-          <FiChevronRight className="text-xs" />
-          <span className="text-gray-800 font-semibold">Cart</span>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 pb-2 flex items-center gap-2 text-sm text-gray-500">
+        <Link to="/" className="hover:text-primary-600 transition-colors">Home</Link>
+        <FiChevronRight className="text-xs" />
+        <Link to="/shop" className="hover:text-primary-600 transition-colors">Shop</Link>
+        <FiChevronRight className="text-xs" />
+        <span className="text-gray-800 font-semibold">Cart</span>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8">
@@ -138,10 +187,7 @@ const CartPage = () => {
               Order today and get it delivered by {getDeliveryDate()}
             </p>
             <p className="text-xs text-gray-600 mt-0.5">
-              {items.length === 1 && items[0].qty === 1
-                ? <><span className="font-semibold text-gray-800">{formatUGX(SINGLE_FEE)}</span> per product — order more than 1 to save!</>
-                : <><span className="font-semibold text-gray-800">{formatUGX(MULTI_FEE)}</span> per product (multi-item discount applied) — all regions</>
-              }
+              <span className="font-semibold text-gray-800">{formatUGX(shipping)}</span> delivery fee for {totalQty} item{totalQty !== 1 ? "s" : ""} — delivered to your doorstep
             </p>
           </div>
         </div>
@@ -177,7 +223,7 @@ const CartPage = () => {
                       <Link to={`/product/${item.slug || item.id}`} className="flex-shrink-0 group">
                         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
                           <img
-                            src={item.image}
+                            src={toAbsolute(item.image)}
                             alt={item.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           />
@@ -204,13 +250,6 @@ const CartPage = () => {
                         )}
                         {/* Mobile-only price */}
                         <p className="sm:hidden text-sm font-extrabold text-gray-900 mt-1">{formatUGX(item.price)}</p>
-                        {/* Remove link */}
-                        <button
-                          onClick={() => handleRemove(item.id)}
-                          className="mt-1.5 flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors font-medium"
-                        >
-                          <FiTrash2 className="text-xs" /> Remove
-                        </button>
                       </div>
                     </div>
 
@@ -241,9 +280,15 @@ const CartPage = () => {
                       </div>
                     </div>
 
-                    {/* Subtotal col */}
-                    <div className="col-span-5 sm:col-span-2 flex justify-end items-center">
+                    {/* Subtotal + Remove col */}
+                    <div className="col-span-5 sm:col-span-2 flex flex-col items-end gap-1">
                       <span className="text-sm font-extrabold text-primary-600">{formatUGX(item.price * item.qty)}</span>
+                      <button
+                        onClick={() => handleRemove(item.id)}
+                        className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 transition-colors font-medium"
+                      >
+                        <FiTrash2 className="text-xs" /> Remove
+                      </button>
                     </div>
                   </motion.div>
                 ))}
@@ -276,29 +321,172 @@ const CartPage = () => {
           {/* ── RIGHT: Order Summary ─────────────────────────────────────── */}
           <div className="space-y-4">
 
+            {/* Loyalty Points */}
+            {eligibility && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <p className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">
+                  <FiAward className="text-orange-500" /> Loyalty Points
+                </p>
+                {loyalty ? (
+                  canRedeem ? (
+                    <div className="space-y-3">
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+                        <p className="text-xs font-bold text-orange-800">You have {pointsBalance} points!</p>
+                        <p className="text-xs text-orange-700 mt-0.5">
+                          Redeem for a <span className="font-bold">{formatUGX(pointsBalance * redemptionValue)}</span> delivery fee discount.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setRedeemPoints((p) => !p)}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all font-semibold text-sm ${
+                          redeemPoints
+                            ? "border-orange-400 bg-orange-50 text-orange-800"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-orange-300"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <FiAward className={redeemPoints ? "text-orange-500" : "text-gray-400"} />
+                          {redeemPoints ? "Points Applied" : "Use My Points"}
+                        </span>
+                        <span className={`w-10 h-5 rounded-full relative transition-colors ${
+                          redeemPoints ? "bg-orange-500" : "bg-gray-300"
+                        }`}>
+                          <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                            redeemPoints ? "translate-x-5" : ""
+                          }`} />
+                        </span>
+                      </button>
+                      {redeemPoints && (
+                        <p className="text-xs text-orange-700 font-semibold flex items-center gap-1">
+                          <Check size={12} className="text-orange-500" />
+                          {formatUGX(pointsDiscount)} discount will be applied at checkout.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 rounded-xl px-4 py-3">
+                      <p className="text-xs text-gray-600">
+                        You have <span className="font-bold text-orange-600">{pointsBalance} pts</span>.
+                        Keep shopping to earn more rewards and unlock a discount!
+                      </p>
+                      <div className="mt-2 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full bg-orange-400 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, Math.round((pointsBalance / redemptionMin) * 100))}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{Math.round((pointsBalance / redemptionMin) * 100)}% of the way to your next reward</p>
+                    </div>
+                  )
+                ) : (
+                  <p className="text-xs text-gray-400">Sign in to view and use your loyalty points.</p>
+                )}
+              </div>
+            )}
+
             {/* Coupon */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <p className="text-sm font-bold text-gray-800 flex items-center gap-2 mb-3">
-                <FiTag className="text-primary-500" /> Have a Coupon?
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+              <p className="text-sm font-bold text-gray-800 flex items-center gap-2">
+                <FiTag className="text-primary-500" /> Coupon / Promo Code
               </p>
+
+              {/* ── Eligibility banners ── */}
+              {eligibility?.large_order_eligible && eligibility?.large_order_coupon && !appliedCoupon && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3">
+                  <div className="flex items-start gap-2">
+                    <Tag size={15} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-amber-800">Large Order Reward!</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        You qualify for a <span className="font-bold">UGX {eligibility.large_order_coupon.discount.toLocaleString()}</span> discount.
+                      </p>
+                      {/* Code row with copy icon */}
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="font-mono font-extrabold text-amber-900 bg-amber-100 border border-amber-200 px-2 py-1 rounded text-sm tracking-widest select-all">
+                          {eligibility.large_order_coupon.code}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(eligibility.large_order_coupon.code)}
+                          title="Copy code"
+                          className="p-1.5 rounded-lg hover:bg-amber-200 text-amber-700 transition-colors flex-shrink-0"
+                        >
+                          {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyCode(eligibility.large_order_coupon.code)}
+                        disabled={couponLoading}
+                        className="mt-2 w-full text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {couponLoading ? "Applying..." : "Click to Apply Coupon"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {eligibility?.first_order_eligible && eligibility?.first_order_coupon && !appliedCoupon && (
+                <div className="bg-purple-50 border border-purple-300 rounded-xl p-3">
+                  <div className="flex items-start gap-2">
+                    <Gift size={15} className="text-purple-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-purple-800">First Order Discount!</p>
+                      <p className="text-xs text-purple-700 mt-0.5">
+                        Welcome! Get <span className="font-bold">UGX {eligibility.first_order_coupon.discount.toLocaleString()}</span> off your first order.
+                      </p>
+                      {/* Code row with copy icon */}
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="font-mono font-extrabold text-purple-900 bg-purple-100 border border-purple-200 px-2 py-1 rounded text-sm tracking-widest select-all">
+                          {eligibility.first_order_coupon.code}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(eligibility.first_order_coupon.code)}
+                          title="Copy code"
+                          className="p-1.5 rounded-lg hover:bg-purple-200 text-purple-700 transition-colors flex-shrink-0"
+                        >
+                          {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyCode(eligibility.first_order_coupon.code)}
+                        disabled={couponLoading}
+                        className="mt-2 w-full text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        {couponLoading ? "Applying..." : "Click to Apply Coupon"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Manual input ── */}
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={coupon}
-                  onChange={(e) => setCoupon(e.target.value)}
+                  onChange={(e) => {
+                    setCoupon(e.target.value.toUpperCase());
+                    if (!e.target.value.trim()) { setDiscount(0); setAppliedCoupon(""); setCouponMsg(null); }
+                  }}
                   onKeyDown={(e) => e.key === "Enter" && handleCoupon()}
-                  placeholder="e.g. SAVE10"
-                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                  placeholder="Enter coupon code..."
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 font-mono uppercase"
                 />
                 <button
                   onClick={handleCoupon}
-                  className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold px-4 rounded-xl transition-colors"
+                  disabled={!coupon.trim() || couponLoading}
+                  className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Apply
+                  {couponLoading ? "..." : "Apply"}
                 </button>
               </div>
               {couponMsg && (
-                <p className={`text-xs mt-2 font-semibold ${couponMsg.ok ? "text-green-600" : "text-red-500"}`}>
+                <p className={`text-xs font-semibold ${couponMsg.ok ? "text-green-600" : "text-red-500"}`}>
                   {couponMsg.text}
                 </p>
               )}
@@ -316,20 +504,27 @@ const CartPage = () => {
 
                 {discount > 0 && (
                   <div className="flex justify-between text-green-600 bg-green-50 -mx-5 px-5 py-2 rounded-lg">
-                    <span className="font-semibold">Coupon (SAVE10)</span>
+                    <span className="font-semibold">Coupon {appliedCoupon ? `(${appliedCoupon})` : ""}</span>
                     <span className="font-bold">- {formatUGX(discount)}</span>
                   </div>
                 )}
 
-                                <div className="flex justify-between text-gray-600">
+                {pointsDiscount > 0 && (
+                  <div className="flex justify-between text-orange-600 bg-orange-50 -mx-5 px-5 py-2 rounded-lg">
+                    <span className="font-semibold flex items-center gap-1"><FiAward size={12} /> Delivery Discount (Points)</span>
+                    <span className="font-bold">- {formatUGX(pointsDiscount)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-gray-600">
                   <span className="flex items-center gap-1.5">
                     <Truck size={13} className="text-gray-400" /> Delivery
                   </span>
-                  <span className="font-semibold text-gray-800">{formatUGX(shipping)}</span>
+                  <span className="font-semibold text-gray-800">{formatUGX(Math.max(0, shipping - pointsDiscount))}</span>
                 </div>
-                <p className="text-xs text-blue-600 -mt-1">
-                  {formatUGX(feePerItem)}/product × {totalQty} item{totalQty !== 1 ? "s" : ""}
-                  {items.length === 1 ? " — order more than 1 to get 5,000/product" : " — multi-item rate"}
+                  <p className="text-xs text-blue-600 -mt-1">
+                  {formatUGX(BASE_FEE)} base fee for up to {BASE_QTY_LIMIT} items
+                  {totalQty > BASE_QTY_LIMIT && `, +${formatUGX(EXTRA_PER_UNIT)} × ${totalQty - BASE_QTY_LIMIT} extra`}
                 </p>
 
                 <div className="flex justify-between text-gray-600">
@@ -344,7 +539,14 @@ const CartPage = () => {
               </div>
 
               <button
-                onClick={() => navigate("/checkout")}
+                onClick={() => {
+                  sessionStorage.setItem('cart_rewards', JSON.stringify({
+                    redeemPoints,
+                    appliedCoupon,
+                    discount,
+                  }));
+                  navigate("/checkout");
+                }}
                 className="mt-5 w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 active:scale-95 text-white font-bold py-4 rounded-xl transition-all shadow-md hover:shadow-lg text-sm"
               >
                 Proceed to Checkout <FiArrowRight />
@@ -353,7 +555,7 @@ const CartPage = () => {
               <div className="mt-4 grid grid-cols-2 divide-x divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
                 {[
                   { icon: <FiShield />, label: "Verified Seller" },
-                  { icon: <Truck size={14} />, label: "2-Day Delivery" },
+                  { icon: <Truck size={14} />, label: "Doorstep Delivery" },
                 ].map((b) => (
                   <div key={b.label} className="flex flex-col items-center gap-1 py-3 text-center bg-gray-50">
                     <span className="text-primary-500 text-base">{b.icon}</span>
@@ -366,12 +568,13 @@ const CartPage = () => {
             {/* Payment methods */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <p className="text-xs text-gray-400 text-center mb-3 font-bold uppercase tracking-wider">We Accept</p>
-              <div className="flex items-center justify-center gap-2 bg-yellow-50 border border-yellow-100 text-yellow-700 text-xs font-bold px-3 py-2.5 rounded-xl">
-                <svg viewBox="0 0 28 28" className="w-5 h-5 flex-shrink-0" fill="none">
-                  <circle cx="14" cy="14" r="14" fill="#FFCC00"/>
-                  <text x="50%" y="56%" dominantBaseline="middle" textAnchor="middle" fontSize="7" fontWeight="bold" fill="#1a1a1a">MTN</text>
-                </svg>
-                MTN Mobile Money
+              <div className="flex items-center justify-center gap-3">
+                <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 px-3 py-2 rounded-xl">
+                  <img src="https://res.cloudinary.com/d5qqtsou/image/upload/v1785425025/MTN_MoMo_irikay.jpg" alt="MTN MoMo" className="h-7 w-auto object-contain rounded" />
+                </div>
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-3 py-2 rounded-xl">
+                  <img src="https://res.cloudinary.com/d5qqtsou/image/upload/v1785425176/Airtel_Money_fgicyp.png" alt="Airtel Money" className="h-7 w-auto object-contain" />
+                </div>
               </div>
             </div>
           </div>

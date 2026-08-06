@@ -32,7 +32,8 @@ api.interceptors.response.use(
         } catch {
           localStorage.removeItem("access_token");
           localStorage.removeItem("refresh_token");
-          window.location.href = "/login";
+          const base = process.env.NODE_ENV === "production" ? "/frontend" : "";
+          window.location.href = `${base}/login`;
         }
       }
     }

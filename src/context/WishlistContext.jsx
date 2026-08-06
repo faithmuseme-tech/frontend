@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "./AuthContext";
 import api from "../services/api";
+import { toAbsolute } from "../utils/imageUrl";
 
 const WishlistContext = createContext();
 
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+const NUDGE_DELAY_MS = 3 * 60 * 1000; // 3 minutes
+const NUDGE_COOLDOWN_MS = 30 * 60 * 1000;
+const NUDGE_STORAGE_KEY = "wishlist_nudge_last";
 
 const normalizeProduct = (p) => ({
   id: p.id,
@@ -27,8 +29,9 @@ const normalizeProduct = (p) => ({
 export const WishlistProvider = ({ children }) => {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
+  const [nudgeProduct, setNudgeProduct] = useState(null);
+  const nudgeTimers = useRef({}); // productId -> timeoutId
 
-  // Load wishlist from backend when user logs in
   const fetchWishlist = useCallback(() => {
     api.get("/wishlist/")
       .then((res) => setItems((res.data.products || []).map(normalizeProduct)))
@@ -36,25 +39,56 @@ export const WishlistProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchWishlist();
-    } else {
-      setItems([]);
-    }
+    if (user) fetchWishlist();
+    else setItems([]);
   }, [user, fetchWishlist]);
 
-  const toggle = async (product) => {
-    // Optimistic update
+  // Schedule a nudge for a product after NUDGE_DELAY_MS if not added to cart
+  const scheduleNudge = useCallback((product, cartItems) => {
+    // Clear any existing timer for this product
+    clearTimeout(nudgeTimers.current[product.id]);
+
+    nudgeTimers.current[product.id] = setTimeout(() => {
+      // Check cooldown
+      const last = parseInt(localStorage.getItem(NUDGE_STORAGE_KEY) || "0", 10);
+      if (Date.now() - last < NUDGE_COOLDOWN_MS) return;
+
+      // Only fire if product is still in wishlist and NOT in cart
+      setItems((current) => {
+        const stillWishlisted = current.some((i) => i.id === product.id);
+        if (!stillWishlisted) return current;
+
+        const inCart = (cartItems || []).some((c) => c.id === product.id);
+        if (inCart) return current;
+
+        localStorage.setItem(NUDGE_STORAGE_KEY, String(Date.now()));
+        setNudgeProduct(product);
+        return current;
+      });
+    }, NUDGE_DELAY_MS);
+  }, []);
+
+  const dismissNudge = useCallback(() => setNudgeProduct(null), []);
+
+  const toggle = async (product, cartItems) => {
     const alreadyIn = items.some((i) => i.id === product.id);
+
     setItems((prev) =>
       alreadyIn ? prev.filter((i) => i.id !== product.id) : [...prev, product]
     );
+
+    if (!alreadyIn) {
+      // Just wishlisted — start nudge timer
+      scheduleNudge(product, cartItems);
+    } else {
+      // Removed from wishlist — cancel timer
+      clearTimeout(nudgeTimers.current[product.id]);
+    }
 
     if (user) {
       try {
         await api.post("/wishlist/", { product_id: product.id });
       } catch {
-        // Revert on failure
         setItems((prev) =>
           alreadyIn ? [...prev, product] : prev.filter((i) => i.id !== product.id)
         );
@@ -65,7 +99,7 @@ export const WishlistProvider = ({ children }) => {
   const isWishlisted = (id) => items.some((i) => i.id === id);
 
   return (
-    <WishlistContext.Provider value={{ items, toggle, isWishlisted, count: items.length, fetchWishlist }}>
+    <WishlistContext.Provider value={{ items, toggle, isWishlisted, count: items.length, fetchWishlist, nudgeProduct, dismissNudge }}>
       {children}
     </WishlistContext.Provider>
   );

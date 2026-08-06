@@ -1,6 +1,7 @@
 {
   "short_name": "CartPulse",
   "name": "CartPulse — Shop Premium Electronics",
+  "description": "Your trusted destination for premium electronics in Uganda.",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,16 +11,33 @@
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
     },
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/frontend/",
+  "scope": "/frontend/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "theme_color": "#4f46e5",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "categories": ["shopping", "lifestyle"]
 }

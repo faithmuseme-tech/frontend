@@ -11,6 +11,8 @@ const productService = {
   getDiverseNewArrivals: () => api.get("/products/new-arrivals/diverse/"),
   trackView: (product_slug, seconds_spent) =>
     api.post("/products/track-view/", { product_slug, seconds_spent }),
+  trackPage: (path, seconds_spent) =>
+    api.post("/products/track-page/", { path, seconds_spent }),
   search: (q, params) => api.get("/products/search/", { params: { q, ...params } }),
 
   // Single product

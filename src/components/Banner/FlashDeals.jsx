@@ -6,9 +6,7 @@ import Rating from "../Rating/Rating";
 import { formatUGX } from "../../utils/currency";
 import { useCart } from "../../context/CartContext";
 import api from "../../services/api";
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+import { toAbsolute } from "../../utils/imageUrl";
 
 const getTimeLeft = (endsAt) => {
   const diff = new Date(endsAt) - Date.now();

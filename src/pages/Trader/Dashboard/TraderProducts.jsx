@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import traderService from "../../../services/traderService";
 import { FiPlusCircle, FiEdit2, FiTrash2, FiPackage, FiAlertCircle, FiSearch, FiX } from "react-icons/fi";
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const TraderProducts = () => {
   const [products, setProducts] = useState([]);
@@ -129,7 +130,7 @@ const TraderProducts = () => {
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0">
-                        {p.primary_image && <img src={p.primary_image} alt={p.name} className="w-full h-full object-cover" />}
+                        {p.primary_image && <img src={toAbsolute(p.primary_image)} alt={p.name} className="w-full h-full object-cover" />}
                       </div>
                       <span className="font-semibold text-gray-800 line-clamp-1">{p.name}</span>
                     </div>

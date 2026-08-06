@@ -4,9 +4,7 @@ import { motion } from "framer-motion";
 import { FiArrowRight, FiTrendingDown } from "react-icons/fi";
 import { formatUGX } from "../../utils/currency";
 import api from "../../services/api";
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+import { toAbsolute } from "../../utils/imageUrl";
 
 // Normalize name for grouping: lowercase, strip extra spaces
 const normalizeName = (name) => name?.trim().toLowerCase().replace(/\s+/g, " ") || "";

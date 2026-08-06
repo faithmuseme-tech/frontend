@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FiTag, FiPlus, FiEdit2, FiTrash2, FiCheck, FiX, FiImage } from "react-icons/fi";
 import adminService from "../../../services/adminService";
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const emptyForm = { name: "", icon: "", description: "", image: null, is_active: true };
 

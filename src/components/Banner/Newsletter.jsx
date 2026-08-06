@@ -1,21 +1,32 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { FiMail, FiArrowRight, FiCheck } from "react-icons/fi";
+import api from "../../services/api";
 
 const Newsletter = () => {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       setError("Please enter a valid email address.");
       return;
     }
     setError("");
-    setSubmitted(true);
-    setEmail("");
+    setLoading(true);
+    try {
+      await api.post("/admin/newsletter/subscribe/", { email });
+      setSubmitted(true);
+      setEmail("");
+    } catch (err) {
+      const msg = err.response?.data?.error;
+      setError(msg || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -48,7 +59,7 @@ const Newsletter = () => {
               <div className="w-8 h-8 bg-green-400 rounded-full flex items-center justify-center">
                 <FiCheck className="text-white font-bold" />
               </div>
-              <p className="text-white font-semibold">You're subscribed! Welcome to the Electrons family 🎉</p>
+              <p className="text-white font-semibold">You're subscribed! We'll keep you updated 🎉</p>
             </motion.div>
           ) : (
             <form onSubmit={handleSubmit} className="mt-8 flex flex-row gap-2">
@@ -63,11 +74,12 @@ const Newsletter = () => {
                   aria-label="Email address"
                 />
               </div>
-              <button
+                <button
                 type="submit"
-                className="flex-shrink-0 flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 text-white font-bold px-4 sm:px-5 py-3 rounded-xl text-sm transition-all whitespace-nowrap"
+                disabled={loading}
+                className="flex-shrink-0 flex items-center gap-1.5 bg-accent-500 hover:bg-accent-600 disabled:opacity-60 text-white font-bold px-4 sm:px-5 py-3 rounded-xl text-sm transition-all whitespace-nowrap"
               >
-                Subscribe <FiArrowRight className="hidden sm:inline" />
+                {loading ? "..." : <>Subscribe <FiArrowRight className="hidden sm:inline" /></>}
               </button>
             </form>
           )}

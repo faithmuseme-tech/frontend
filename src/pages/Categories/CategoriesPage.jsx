@@ -60,7 +60,7 @@ const CategoriesPage = () => {
             animate="visible"
             variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
           >
-            {categories.map((cat) => (
+            {categories.filter((cat) => (cat.product_count ?? 0) > 0).map((cat) => (
               <motion.div
                 key={cat.id}
                 variants={{ hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0 } }}

@@ -2,9 +2,7 @@ import React, { useEffect, useState } from "react";
 import traderService from "../../../services/traderService";
 import { FiPlusCircle, FiTrash2, FiAlertCircle, FiClock } from "react-icons/fi";
 import { formatUGX } from "../../../utils/currency";
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const getTimeLeft = (endsAt) => {
   const diff = new Date(endsAt) - Date.now();

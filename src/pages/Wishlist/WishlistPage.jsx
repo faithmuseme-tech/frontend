@@ -6,11 +6,12 @@ import { useWishlist } from "../../context/WishlistContext";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import { formatUGX } from "../../utils/currency";
+import { toAbsolute } from "../../utils/imageUrl";
 import Rating from "../../components/Rating/Rating";
 
 const WishlistPage = () => {
   const { items, toggle } = useWishlist();
-  const { addItem } = useCart();
+  const { addItem, items: cartItems } = useCart();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -96,7 +97,7 @@ const WishlistPage = () => {
                 {/* Image */}
                 <Link to={`/product/${product.slug || product.id}`} className="relative block aspect-square bg-gray-50 overflow-hidden group">
                   <img
-                    src={product.image}
+                    src={toAbsolute(product.image)}
                     alt={product.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
@@ -112,7 +113,7 @@ const WishlistPage = () => {
                   )}
                   {/* Remove button */}
                   <button
-                    onClick={(e) => { e.preventDefault(); toggle(product); }}
+                    onClick={(e) => { e.preventDefault(); toggle(product, cartItems); }}
                     className="absolute top-3 right-3 w-8 h-8 bg-white rounded-full shadow flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
                     aria-label="Remove from wishlist"
                   >

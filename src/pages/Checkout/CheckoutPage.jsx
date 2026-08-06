@@ -4,37 +4,29 @@ import { motion } from "framer-motion";
 import {
   ChevronRight, MapPin, User, Phone, Mail,
   Truck, Shield, CreditCard, Check, ArrowLeft,
-  Package, AlertCircle, Clock, Calendar,
+  Package, AlertCircle, Tag, Gift, Star,
 } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import { formatUGX } from "../../utils/currency";
 import orderService from "../../services/orderService";
 import authService from "../../services/authService";
+import { toAbsolute } from "../../utils/imageUrl";
+import couponService from "../../services/couponService";
 
-// Delivery fee rules:
-// 1 product line  → UGX 10,000 × total quantity
-// 2+ product lines → UGX 5,000 × total quantity  (all regions)
-const SINGLE_FEE = 10000;
-const MULTI_FEE  = 5000;
-
-const DELIVERY_CAP = 90_000;
+// Delivery fee rules (based on total quantity across all cart items):
+// qty 1–3 → UGX 15,000 flat
+// qty 4+  → UGX 15,000 + (qty - 3) × 5,000
+const BASE_FEE = 15000;
+const EXTRA_PER_UNIT = 5000;
+const BASE_QTY_LIMIT = 3;
 
 const getTotalQty = (items = []) => items.reduce((sum, i) => sum + (i.qty || 1), 0);
 
 const getDeliveryFee = (items = []) => {
-  const totalQty = getTotalQty(items);
-  if (totalQty <= 1) return SINGLE_FEE;
-  // First 18 units at 5,000 = 90,000, every unit after that at 4,500
-  const unitsAtNormal = Math.min(totalQty, Math.floor(DELIVERY_CAP / MULTI_FEE));
-  const unitsDiscounted = totalQty - unitsAtNormal;
-  return unitsAtNormal * MULTI_FEE + unitsDiscounted * 4_500;
-};
-
-const getFeePerItem = (items = []) => {
-  const totalQty = getTotalQty(items);
-  if (totalQty <= 1) return SINGLE_FEE;
-  return MULTI_FEE * totalQty > DELIVERY_CAP ? 4_500 : MULTI_FEE;
+  const qty = getTotalQty(items);
+  if (qty <= BASE_QTY_LIMIT) return BASE_FEE;
+  return BASE_FEE + (qty - BASE_QTY_LIMIT) * EXTRA_PER_UNIT;
 };
 
 // Delivery date: always 2 days ahead, 3 days if Saturday after noon, never Sunday
@@ -98,26 +90,20 @@ const PAYMENT_METHODS = [
     id: "mtn",
     label: "MTN Mobile Money",
     number: "0794 448 439",
-    hint: "After placing your order, send the exact total to 0794 448 439 (SABIRA SSEMATA) via MTN MoMo.",
+    hint: "After placing your order, send the exact total to 0794 448 439 (SABIRA SSEMATA) via MTN MoMo. Use your full name as the reference/reason.",
     color: "border-yellow-400 bg-yellow-50",
     icon: (
-      <svg viewBox="0 0 40 40" className="w-8 h-8 flex-shrink-0" fill="none">
-        <circle cx="20" cy="20" r="20" fill="#FFCC00"/>
-        <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontSize="11" fontWeight="bold" fill="#1a1a1a">MTN</text>
-      </svg>
+      <img src="https://res.cloudinary.com/d5qqtsou/image/upload/v1785425025/MTN_MoMo_irikay.jpg" alt="MTN MoMo" className="w-10 h-8 rounded object-contain flex-shrink-0" />
     ),
   },
   {
     id: "airtel",
     label: "Airtel Money",
     number: "0794 448 439",
-    hint: "After placing your order, send the exact total to 0794 448 439 (SABIRA SSEMATA) via Airtel Money.",
+    hint: "After placing your order, send the exact total to 0794 448 439 (SABIRA SSEMATA) via Airtel Money. Use your full name as the reference/reason.",
     color: "border-red-400 bg-red-50",
     icon: (
-      <svg viewBox="0 0 40 40" className="w-8 h-8 flex-shrink-0" fill="none">
-        <circle cx="20" cy="20" r="20" fill="#E40000"/>
-        <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fontSize="8" fontWeight="bold" fill="white">AIRTEL</text>
-      </svg>
+      <img src="https://res.cloudinary.com/d5qqtsou/image/upload/v1785425176/Airtel_Money_fgicyp.png" alt="Airtel Money" className="w-10 h-8 rounded object-contain flex-shrink-0" />
     ),
   },
 ];
@@ -157,6 +143,23 @@ const CheckoutPage = () => {
   const [errors, setErrors] = useState({});
   const [paymentMethod, setPaymentMethod] = useState("mtn");
   const [senderPhone, setSenderPhone] = useState("");
+
+  // ── Promo state ──────────────────────────────────────────────────────
+  const [couponCode, setCouponCode] = useState("");
+  const [redeemPoints, setRedeemPoints] = useState(false);
+  const [preview, setPreview] = useState(null);   // backend preview response
+  const [eligibilityPreview, setEligibilityPreview] = useState(null); // banners only
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [couponApplied, setCouponApplied] = useState(false);
+  const [copied, setCopied] = useState("");
+  // Track what was pre-selected from Cart page
+  const [cartRewards] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('cart_rewards');
+      if (saved) { sessionStorage.removeItem('cart_rewards'); return JSON.parse(saved); }
+    } catch { /* ignore */ }
+    return null;
+  });
 
   const [form, setForm] = useState(() => {
     const city = user?.city || "";
@@ -199,9 +202,59 @@ const CheckoutPage = () => {
   }, [user]);
 
   const shipping = useMemo(() => getDeliveryFee(items), [items]);
-  const grandTotal = useMemo(() => totalPrice + shipping, [totalPrice, shipping]);
+  // Use backend-validated totals when available, fall back to local calc
+  const couponDiscount = preview?.coupon_discount ?? 0;
+  const pointsDiscount = preview?.points_discount ?? 0;
+  const grandTotal = preview
+    ? preview.grand_total
+    : Math.max(0, totalPrice + shipping - couponDiscount - pointsDiscount);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const fetchPreview = async (city, code, pts, forEligibility = false) => {
+    if (!city) return;
+    setPreviewLoading(true);
+    try {
+      const res = await couponService.preview({
+        shipping_city: city,
+        coupon_code: code || "",
+        redeem_points: pts,
+      });
+      setPreview(res.data);
+      if (forEligibility) setEligibilityPreview(res.data);
+    } catch {
+      // silently ignore — fall back to local calc
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Pre-populate from Cart selections once city is available
+  useEffect(() => {
+    if (!cartRewards || !form.shipping_city) return;
+    if (cartRewards.appliedCoupon) {
+      setCouponCode(cartRewards.appliedCoupon);
+      setCouponApplied(true);
+    }
+    if (cartRewards.redeemPoints) {
+      setRedeemPoints(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.shipping_city]);
+
+  // Fetch eligibility (banners) whenever city changes — no coupon code
+  useEffect(() => {
+    fetchPreview(form.shipping_city, "", false, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.shipping_city]);
+
+  // Re-fetch full preview (discounts) when coupon applied or points toggled
+  useEffect(() => {
+    if (couponApplied || redeemPoints) {
+      fetchPreview(form.shipping_city, couponApplied ? couponCode : "", redeemPoints);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [couponApplied, redeemPoints]);
 
   const validateStep1 = () => {
     const e = {};
@@ -242,12 +295,14 @@ const CheckoutPage = () => {
       if (form.shipping_city && form.shipping_city !== user.city) {
         authService.updateProfile({ city: form.shipping_city, address: form.shipping_address }).catch(() => {});
       }
-      await orderService.createOrder({
+      const res = await orderService.createOrder({
         shipping_address: form.shipping_address,
         shipping_city: form.shipping_city,
         shipping_country: form.shipping_country,
         shipping_zip: form.shipping_zip,
         notes: form.notes ? `${form.notes} | Payment from: ${senderPhone}` : `Payment from: ${senderPhone}`,
+        coupon_code: couponApplied ? couponCode : "",
+        redeem_points: redeemPoints,
         items: items.map((item) => ({
           product_id: item.id,
           product_name: item.name,
@@ -256,7 +311,9 @@ const CheckoutPage = () => {
         })),
       });
       clearCart();
-      navigate("/success", { state: { total: grandTotal, method: paymentMethod, senderPhone } });
+      window.dispatchEvent(new Event('product-stock-updated'));
+      const finalTotal = preview?.grand_total ?? grandTotal;
+      navigate("/success", { state: { total: finalTotal, method: paymentMethod, senderPhone, secretWord: res.data?.secret_word || "", customerName: `${form.first_name} ${form.last_name}`.trim() } });
     } catch (err) {
       const msg = err?.response?.data?.error || "Failed to place order. Please try again.";
       setErrors({ submit: msg });
@@ -311,10 +368,10 @@ const CheckoutPage = () => {
             <React.Fragment key={label}>
               <div className="flex flex-col items-center gap-1">
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm transition-all
-                  ${i < step ? "bg-green-500 text-white" : i === step ? "bg-primary-600 text-white shadow-lg shadow-primary-200" : "bg-gray-200 text-gray-400"}`}>
+                  ${i < step ? "bg-green-500 text-white" : i === step ? "bg-green-500 text-white outline outline-4 outline-green-100" : "bg-gray-200 text-gray-400"}`}>
                   {i < step ? <Check size={16} /> : i + 1}
                 </div>
-                <span className={`text-xs font-semibold ${i === step ? "text-primary-600" : "text-gray-400"}`}>{label}</span>
+                <span className={`text-xs font-semibold ${i === step ? "text-green-600" : "text-gray-400"}`}>{label}</span>
               </div>
               {i < STEPS.length - 1 && (
                 <div className={`h-0.5 w-16 sm:w-24 mx-2 mb-4 rounded-full transition-all ${i < step ? "bg-green-400" : "bg-gray-200"}`} />
@@ -388,40 +445,114 @@ const CheckoutPage = () => {
                       rows={3}
                       value={form.notes}
                       onChange={set("notes")}
-                      placeholder="Any special instructions for delivery..."
+                      placeholder="Any special instructions for your doorstep delivery (e.g. landmark, gate colour, best time to deliver)..."
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 resize-none"
                     />
+                  </div>
+
+                  {/* ── Promo / Coupon panel ──────────────────────────── */}
+                  {eligibilityPreview?.large_order_eligible && eligibilityPreview?.large_order_coupon && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+                      <Tag size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm flex-1">
+                        <p className="font-bold text-amber-800">Large Order Reward!</p>
+                        <p className="text-amber-700 mt-0.5">
+                          You qualify for a <span className="font-bold">UGX {eligibilityPreview.large_order_coupon.discount.toLocaleString()}</span> discount.
+                          Use code{" "}
+                          <button
+                            type="button"
+                            onClick={() => { setCouponCode(eligibilityPreview.large_order_coupon.code); setCopied("large"); setTimeout(() => setCopied(""), 2000); }}
+                            className="font-mono font-extrabold text-amber-900 bg-amber-100 hover:bg-amber-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors inline-flex items-center gap-1"
+                            title="Click to copy code to coupon field"
+                          >
+                            {eligibilityPreview.large_order_coupon.code}
+                            <span className="text-xs">{copied === "large" ? "Copied!" : "Copy"}</span>
+                          </button>{" "}
+                          — then click Apply below.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {eligibilityPreview?.first_order_eligible && eligibilityPreview?.first_order_coupon && (
+                    <div className="bg-purple-50 border border-purple-300 rounded-xl p-4 flex items-start gap-3">
+                      <Gift size={18} className="text-purple-600 mt-0.5 flex-shrink-0" />
+                      <div className="text-sm flex-1">
+                        <p className="font-bold text-purple-800">First Order Discount!</p>
+                        <p className="text-purple-700 mt-0.5">
+                          Welcome! Use{" "}
+                          <button
+                            type="button"
+                            onClick={() => { setCouponCode(eligibilityPreview.first_order_coupon.code); setCopied("first"); setTimeout(() => setCopied(""), 2000); }}
+                            className="font-mono font-extrabold text-purple-900 bg-purple-100 hover:bg-purple-200 px-1.5 py-0.5 rounded cursor-pointer transition-colors inline-flex items-center gap-1"
+                            title="Click to copy code to coupon field"
+                          >
+                            {eligibilityPreview.first_order_coupon.code}
+                            <span className="text-xs">{copied === "first" ? "Copied!" : "Copy"}</span>
+                          </button>{" "}
+                          for a <span className="font-bold">UGX {eligibilityPreview.first_order_coupon.discount.toLocaleString()}</span> off — then click Apply below.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Coupon input */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Coupon / Promo Code</label>
+                    {couponApplied && cartRewards?.appliedCoupon ? (
+                      <div className="flex items-center gap-2 bg-green-50 border border-green-300 rounded-xl px-4 py-3">
+                        <Check size={15} className="text-green-600 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-green-800">Coupon <span className="font-mono">{cartRewards.appliedCoupon}</span> applied from cart</p>
+                          <p className="text-xs text-green-700">UGX {cartRewards.discount.toLocaleString()} off your order</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setCouponApplied(false); setCouponCode(""); }}
+                          className="text-xs text-red-400 hover:text-red-600 font-semibold transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            value={couponCode}
+                            onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponApplied(false); }}
+                            placeholder="Enter code..."
+                            className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:border-primary-400 focus:ring-primary-100 font-mono uppercase"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!couponCode.trim() || previewLoading}
+                          onClick={() => { setCouponApplied(true); fetchPreview(form.shipping_city, couponCode, redeemPoints); }}
+                          className="px-5 py-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    )}
+                    {couponApplied && !cartRewards?.appliedCoupon && preview?.applied_coupon && (
+                      <p className="text-xs text-green-600 font-semibold flex items-center gap-1"><Check size={12} /> Coupon applied — UGX {preview.applied_coupon.discount.toLocaleString()} off!</p>
+                    )}
+                    {couponApplied && preview?.coupon_error && (
+                      <p className="text-xs text-red-500 font-semibold flex items-center gap-1"><AlertCircle size={12} /> {preview.coupon_error}</p>
+                    )}
                   </div>
 
                   {/* Delivery estimate — persuasive */}
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
                     <Truck size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
                     <div className="text-sm">
-                      <p className="font-bold text-green-800">Order today and get it delivered by {getDeliveryDate()}.</p>
-                      <p className="text-green-700 mt-0.5">We dispatch within <span className="font-semibold">24 hours</span> of confirming your payment. Don't miss out — stock is limited!</p>
+                      <p className="font-bold text-green-800">Order today and get it delivered to your doorstep by {getDeliveryDate()}.</p>
+                      <p className="text-green-700 mt-0.5">We dispatch within <span className="font-semibold">24 hours</span> of confirming your payment. Doorstep delivery to listed towns — stock is limited!</p>
                     </div>
                   </div>
 
-                  {/* Pickup station */}
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-2">
-                    <div className="flex items-start gap-3">
-                      <MapPin size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="font-bold text-green-800 text-sm">Rather pick it up yourself?</p>
-                        <p className="text-green-700 text-sm mt-0.5">No problem! Swing by our Fort Portal pick-up station — it's quick, easy, and free.</p>
-                        <p className="text-green-800 font-semibold text-sm mt-1.5">Link, Kabundaire Town</p>
-                        <p className="text-green-600 text-xs">Near Kings Bet · Kabundaire, Fort Portal City</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-5 pl-7 pt-1">
-                      <span className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
-                        <Clock size={13} /> 10:00 AM – 6:00 PM
-                      </span>
-                      <span className="flex items-center gap-1.5 text-xs text-green-700 font-medium">
-                        <Calendar size={13} /> Monday – Saturday
-                      </span>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -478,6 +609,80 @@ const CheckoutPage = () => {
                     }
                   </div>
 
+                  {/* Loyalty points redemption — Step 1 */}
+                  {eligibilityPreview?.loyalty && (() => {
+                    const pts = eligibilityPreview.loyalty.points_balance;
+                    const min = eligibilityPreview.config?.points_redemption_minimum ?? 150;
+                    const val = eligibilityPreview.config?.points_redemption_value ?? 100;
+                    const eligible = pts >= min;
+                    const fromCart = cartRewards?.redeemPoints && eligible;
+                    return (
+                      <div className={`rounded-xl border-2 p-4 transition-all ${
+                        eligible
+                          ? redeemPoints ? "border-orange-400 bg-orange-50" : "border-orange-200 bg-orange-50/50"
+                          : "border-gray-100 bg-gray-50"
+                      }`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                              eligible ? "bg-orange-100" : "bg-gray-100"
+                            }`}>
+                              <Star size={18} className={eligible ? "text-orange-500" : "text-gray-400"} />
+                            </div>
+                            <div>
+                              <p className={`text-sm font-bold ${ eligible ? "text-orange-900" : "text-gray-600" }`}>
+                                {eligible ? (fromCart ? "Loyalty Points Applied from Cart" : "Use Your Loyalty Points") : "Loyalty Points"}
+                              </p>
+                              <p className={`text-xs mt-0.5 ${ eligible ? "text-orange-700" : "text-gray-400" }`}>
+                                {eligible
+                                  ? `${pts} pts = ${formatUGX(pts * val)} off your delivery fee`
+                                  : `You have ${pts} pts — keep shopping to earn more!`
+                                }
+                              </p>
+                            </div>
+                          </div>
+                          {eligible && (
+                            fromCart ? (
+                              <button
+                                type="button"
+                                onClick={() => setRedeemPoints(false)}
+                                className="text-xs text-red-400 hover:text-red-600 font-semibold transition-colors flex-shrink-0"
+                              >
+                                Remove
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setRedeemPoints((p) => !p)}
+                                className={`relative w-12 h-6 rounded-full flex-shrink-0 transition-colors ${
+                                  redeemPoints ? "bg-orange-500" : "bg-gray-300"
+                                }`}
+                              >
+                                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                                  redeemPoints ? "translate-x-6" : ""
+                                }`} />
+                              </button>
+                            )
+                          )}
+                        </div>
+                        {eligible && redeemPoints && (
+                          <div className="mt-3 flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-orange-200">
+                            <Check size={14} className="text-orange-500 flex-shrink-0" />
+                            <p className="text-xs text-orange-800 font-semibold">
+                              {preview?.points_discount > 0
+                                ? `${formatUGX(preview.points_discount)} delivery fee discount applied!`
+                                : `Up to ${formatUGX(pts * val)} off your delivery fee.`
+                              }
+                            </p>
+                          </div>
+                        )}
+                        {eligible && redeemPoints && preview?.points_error && (
+                          <p className="text-xs text-red-500 font-semibold mt-2">{preview.points_error}</p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   <div className="flex items-center gap-2 text-xs text-gray-400 pt-2">
                     <Shield size={13} className="text-green-500" />
                     Your order details are safe and secure.
@@ -515,7 +720,7 @@ const CheckoutPage = () => {
                     {items.map((item) => (
                       <div key={item.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                         <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-100 flex-shrink-0">
-                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          <img src={toAbsolute(item.image)} alt={item.name} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-gray-800 line-clamp-1">{item.name}</p>
@@ -529,7 +734,39 @@ const CheckoutPage = () => {
                   {/* Persuasive delivery reminder */}
                   <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2 text-sm">
                     <Truck size={16} className="text-green-600 flex-shrink-0" />
-                    <p className="text-green-800 font-semibold">Order today and get it delivered by {getDeliveryDate()}.</p>
+                    <p className="text-green-800 font-semibold">Order today and get it delivered to your doorstep by {getDeliveryDate()}.</p>
+                  </div>
+
+                  {/* Order total breakdown */}
+                  <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                    <p className="font-bold text-gray-700 flex items-center gap-2 mb-3"><CreditCard size={14} className="text-primary-500" /> Order Total</p>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Subtotal</span>
+                      <span className="font-semibold">{formatUGX(preview?.subtotal ?? totalPrice)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span className="flex items-center gap-1.5"><Truck size={13} className="text-gray-400" /> Delivery</span>
+                      <span className="font-semibold">{formatUGX(preview?.delivery_fee ?? shipping)}</span>
+                    </div>
+                    {couponDiscount > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span className="flex items-center gap-1.5"><Tag size={13} /> Coupon Discount</span>
+                        <span className="font-semibold">− {formatUGX(couponDiscount)}</span>
+                      </div>
+                    )}
+                    {pointsDiscount > 0 && (
+                      <div className="flex justify-between text-orange-600">
+                        <span className="flex items-center gap-1.5"><Star size={13} /> Delivery Discount (Points)</span>
+                        <span className="font-semibold">− {formatUGX(pointsDiscount)}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-gray-200 pt-2 flex justify-between font-extrabold text-gray-900">
+                      <span>Total to Pay</span>
+                      <span className="text-primary-600 text-base">{formatUGX(grandTotal)}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 pt-1">
+                      Send exactly <span className="font-bold text-gray-700">{formatUGX(grandTotal)}</span> to <span className="font-bold text-gray-700">0794 448 439</span> via {PAYMENT_METHODS.find(m => m.id === paymentMethod)?.label}.
+                    </p>
                   </div>
 
                   {errors.submit && (
@@ -584,7 +821,7 @@ const CheckoutPage = () => {
                   <div key={item.id} className="flex items-center gap-3">
                     <div className="relative flex-shrink-0">
                       <div className="w-12 h-12 rounded-lg overflow-hidden border border-gray-100">
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        <img src={toAbsolute(item.image)} alt={item.name} className="w-full h-full object-cover" />
                       </div>
                       <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-primary-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
                         {item.qty}
@@ -601,23 +838,30 @@ const CheckoutPage = () => {
               <div className="border-t border-dashed border-gray-200 pt-4 space-y-2.5 text-sm">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-gray-800">{formatUGX(totalPrice)}</span>
+                  <span className="font-semibold text-gray-800">{formatUGX(preview?.subtotal ?? totalPrice)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span className="flex items-center gap-1.5"><Truck size={13} className="text-gray-400" /> Delivery</span>
-                  <span className="font-semibold">{shipping === 0 ? <span className="text-green-600 font-bold">Free</span> : formatUGX(shipping)}</span>
+                  <span className="font-semibold">{(preview?.delivery_fee ?? shipping) === 0 ? <span className="text-green-600 font-bold">Free</span> : formatUGX(preview?.delivery_fee ?? shipping)}</span>
                 </div>
-                {shipping > 0 && (
+                {(preview?.delivery_fee ?? shipping) > 0 && (
                   <div className="bg-blue-50 rounded-xl px-3 py-2 space-y-1">
-                    {items.map((item) => (
-                      <div key={item.id} className="flex justify-between text-xs text-gray-500">
-                        <span className="truncate max-w-[140px]">{item.name} × {item.qty}</span>
-                        <span>{formatUGX(getFeePerItem(items) * item.qty)}</span>
-                      </div>
-                    ))}
-                    <p className="text-xs text-blue-500 font-medium pt-1">
-                      {formatUGX(getFeePerItem(items))}/product — {items.length > 1 ? "multi-item discount applied!" : "order more to save on delivery!"}
+                    <p className="text-xs text-blue-500 font-medium">
+                      {formatUGX(BASE_FEE)} base fee for up to {BASE_QTY_LIMIT} items
+                      {getTotalQty(items) > BASE_QTY_LIMIT && `, +${formatUGX(EXTRA_PER_UNIT)} × ${getTotalQty(items) - BASE_QTY_LIMIT} extra`}
                     </p>
+                  </div>
+                )}
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span className="flex items-center gap-1.5"><Tag size={13} /> Coupon</span>
+                    <span className="font-semibold">− {formatUGX(couponDiscount)}</span>
+                  </div>
+                )}
+                {pointsDiscount > 0 && (
+                  <div className="flex justify-between text-orange-600">
+                    <span className="flex items-center gap-1.5"><Star size={13} /> Delivery Discount (Points)</span>
+                    <span className="font-semibold">− {formatUGX(pointsDiscount)}</span>
                   </div>
                 )}
                 <div className="border-t border-gray-100 pt-2.5 flex justify-between items-center">
@@ -626,9 +870,6 @@ const CheckoutPage = () => {
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center justify-center gap-1.5 text-xs text-gray-400">
-                <Shield size={13} className="text-green-500" /> Secured by 256-bit SSL encryption
-              </div>
             </div>
           </div>
 

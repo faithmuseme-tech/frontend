@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { FiChevronRight, FiMessageCircle, FiShield, FiCornerUpLeft, FiChevronDown, FiEdit2, FiTrash2, FiCheckSquare, FiX, FiCheck } from "react-icons/fi";
+import { FiChevronRight, FiMessageCircle, FiShield, FiCornerUpLeft, FiChevronDown, FiEdit2, FiTrash2, FiCheckSquare, FiX, FiCheck, FiClock, FiAlertCircle } from "react-icons/fi";
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import { useLocation } from "react-router-dom";
 import ChatAttachment from "../../components/Chat/ChatAttachment";
 import ChatInput from "../../components/Chat/ChatInput";
 
@@ -23,8 +24,52 @@ const ReplyPreview = ({ reply, isMe }) => {
   );
 };
 
+const SWIPE_THRESHOLD = 60;
+
+const SwipeableMessage = ({ children, onSwipe, disabled }) => {
+  const [translateX, setTranslateX] = useState(0);
+  const touchStartX = useRef(null);
+  const triggered   = useRef(false);
+
+  const onTouchStart = (e) => {
+    if (disabled) return;
+    touchStartX.current = e.touches[0].clientX;
+    triggered.current = false;
+  };
+
+  const onTouchMove = (e) => {
+    if (touchStartX.current === null || disabled) return;
+    const dx = e.touches[0].clientX - touchStartX.current;
+    if (dx < 0) return; // only right swipe
+    const clamped = Math.min(dx, SWIPE_THRESHOLD + 20);
+    setTranslateX(clamped);
+    if (clamped >= SWIPE_THRESHOLD && !triggered.current) {
+      triggered.current = true;
+      onSwipe();
+    }
+  };
+
+  const onTouchEnd = () => {
+    touchStartX.current = null;
+    setTranslateX(0);
+  };
+
+  return (
+    <div
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      style={{ transform: `translateX(${translateX}px)`, transition: translateX === 0 ? "transform 0.2s ease" : "none" }}
+    >
+      {children}
+    </div>
+  );
+};
+
 const ChatPage = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const helpTopic = location.state?.helpTopic || null;
   const [messages, setMessages]           = useState([]);
   const [loading, setLoading]             = useState(true);
   const [sending, setSending]             = useState(false);
@@ -150,7 +195,10 @@ const ChatPage = () => {
     try {
       const r = await api.get("/chat/my/");
       setMessages(r.data.messages || []);
-      if (!silent) setLoading(false);
+      if (!silent) {
+        setLoading(false);
+        window.dispatchEvent(new Event("chat-unread-cleared"));
+      }
     } catch {
       if (!silent) setLoading(false);
     }
@@ -217,30 +265,52 @@ const ChatPage = () => {
   const send = async (formData) => {
     if (sending) return false;
     setSending(true);
+    const tempId = `temp_${Date.now()}`;
+    const body = formData.get("body") || "";
+    const file = formData.get("file");
+    const replyToId = formData.get("reply_to");
+    const tempMsg = {
+      id: tempId,
+      sender: user.id,
+      sender_name: user.username || user.email,
+      body,
+      file_url: file && file.type?.startsWith("image/") ? URL.createObjectURL(file) : "",
+      file_type: file ? (file.type?.startsWith("image/") ? "image" : file.type?.startsWith("video/") ? "video" : file.type?.startsWith("audio/") ? "audio" : "doc") : "",
+      file_name: file?.name || "",
+      reply_to: replyToId ? messages.find(m => String(m.id) === String(replyToId)) || null : null,
+      is_read: false, is_edited: false, is_deleted: false,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    justSent.current = true;
+    setMessages((prev) => [...prev, tempMsg]);
+    setReplyTo(null);
     try {
       const token = localStorage.getItem("access_token");
-      const res = await fetch(
-        `${process.env.REACT_APP_API_URL}/chat/my/`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        }
-      );
+      const res = await fetch(`${process.env.REACT_APP_API_URL}/chat/my/`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        console.error("Send failed:", err);
+        setMessages((prev) => prev.map(m => m.id === tempId ? { ...m, _pending: false, _failed: true } : m));
         return false;
       }
       const data = await res.json();
-      justSent.current = true;
-      setMessages((prev) => [...prev, data]);
-      setReplyTo(null);
+      setMessages((prev) => prev.map(m => m.id === tempId ? data : m));
       return true;
-    } catch (err) {
-      console.error("Send failed:", err.message);
+    } catch {
+      setMessages((prev) => prev.map(m => m.id === tempId ? { ...m, _pending: false, _failed: true } : m));
       return false;
     } finally { setSending(false); }
+  };
+
+  const retrySend = async (tempMsg) => {
+    setMessages((prev) => prev.filter(m => m.id !== tempMsg.id));
+    const fd = new FormData();
+    if (tempMsg.body) fd.append("body", tempMsg.body);
+    if (tempMsg.reply_to) fd.append("reply_to", tempMsg.reply_to.id);
+    await send(fd);
   };
 
   if (!user) {
@@ -265,7 +335,7 @@ const ChatPage = () => {
   }, {});
 
   return (
-    <div className="fixed inset-0 bg-gray-50 flex flex-col" style={{ zIndex: 40 }}>
+    <div className="flex flex-col bg-gray-50" style={{ height: "calc(100vh - 112px)" }}>
       {/* Breadcrumb */}
       <div className="bg-white border-b border-gray-100 flex-shrink-0">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-2 text-sm text-gray-500">
@@ -285,7 +355,10 @@ const ChatPage = () => {
           </div>
           <div>
             <p className="font-bold text-gray-900 text-sm">CartPulse Support</p>
-            <p className="text-xs text-green-500 font-semibold">● Online</p>
+            {helpTopic
+              ? <p className="text-xs text-primary-600 font-semibold">Help: {helpTopic}</p>
+              : <p className="text-xs text-green-500 font-semibold">● Online</p>
+            }
           </div>
         </div>
       </div>
@@ -358,6 +431,10 @@ const ChatPage = () => {
                         )}
 
                         {/* Bubble */}
+                        <SwipeableMessage
+                          disabled={isMe || !!msg.is_deleted || selectMode}
+                          onSwipe={() => setReplyTo({ ...msg, sender_name: msg.is_admin_msg ? "CartPulse Support" : msg.sender_name })}
+                        >
                         <div
                           onContextMenu={(e) => isMe && !msg.is_deleted && openContextMenu(e, msg)}
                           onTouchStart={(e) => {
@@ -394,18 +471,30 @@ const ChatPage = () => {
                             </>
                           )}
                         </div>
+                        </SwipeableMessage>
 
                         {/* Timestamp + edited */}
                         <div className={`flex items-center gap-1 px-1 ${isMe ? "justify-end" : "justify-start"}`}>
                           {msg.is_edited && !msg.is_deleted && <span className="text-xs text-gray-400 italic">edited</span>}
                           <span className="text-xs text-gray-400">{fmtTime(msg.created_at)}</span>
                           {isMe && !msg.is_deleted && (
-                            <svg width="18" height="11" viewBox="0 0 18 11" fill="none" className="flex-shrink-0">
-                              {/* first tick */}
-                              <path d="M1 5.5L4 8.5L9 3" stroke={msg.is_read ? "#4fc3f7" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                              {/* second tick — offset right so they sit side by side like ✓✓ */}
-                              <path d="M6 5.5L9 8.5L14 3" stroke={msg.is_read ? "#4fc3f7" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
+                            msg._failed ? (
+                              <button
+                                onClick={() => retrySend(msg)}
+                                className="flex items-center gap-0.5 text-red-400 hover:text-red-600"
+                                title="Failed — tap to retry"
+                              >
+                                <FiAlertCircle size={13} />
+                                <span className="text-xs">Retry</span>
+                              </button>
+                            ) : msg._pending ? (
+                              <FiClock size={12} className="text-gray-400 flex-shrink-0" />
+                            ) : (
+                              <svg width="18" height="11" viewBox="0 0 18 11" fill="none" className="flex-shrink-0">
+                                <path d="M1 5.5L4 8.5L9 3" stroke={msg.is_read ? "#4fc3f7" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M6 5.5L9 8.5L14 3" stroke={msg.is_read ? "#4fc3f7" : "#9ca3af"} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )
                           )}
                         </div>
                       </div>
@@ -488,7 +577,8 @@ const ChatPage = () => {
             onCancelReply={() => setReplyTo(null)}
           />
           <p className="text-xs text-gray-400 pb-3 text-center">
-            Our team typically replies within a few hours · 0794 448 439
+            Our customer care will reply soon. If it takes long, call us directly on{" "}
+            <a href="tel:0794448439" className="text-primary-600 font-semibold hover:underline">0794 448 439</a>.
           </p>
         </div>
       </div>

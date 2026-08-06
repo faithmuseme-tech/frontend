@@ -29,7 +29,7 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "predeploy": "npm run build",
+    "predeploy": "node scripts/generate-icons.js && node scripts/stamp-sw.js && npm run build",
     "deploy": "gh-pages -d build"
   },
   "eslintConfig": {
@@ -54,6 +54,7 @@
     "autoprefixer": "^10.5.2",
     "gh-pages": "^6.3.0",
     "postcss": "^8.5.16",
+    "sharp": "^0.35.3",
     "tailwindcss": "^3.4.19"
   }
 }

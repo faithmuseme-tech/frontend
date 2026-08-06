@@ -1,6 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { FiTruck, FiRefreshCw, FiHeadphones, FiShoppingBag, FiMapPin, FiAlertTriangle } from "react-icons/fi";
+import { FiTruck, FiRefreshCw, FiHeadphones, FiMapPin, FiAlertTriangle } from "react-icons/fi";
 import { useSiteSettings } from "../../context/SiteSettingsContext";
 
 const messages = [
@@ -9,13 +8,13 @@ const messages = [
   { icon: <FiMapPin />,        text: "Village or remote area? Additional delivery fees apply — CartPulse does not cover those costs" },
   { icon: <FiRefreshCw />,     text: "Easy returns for faulty products — report within the return window" },
   { icon: <FiHeadphones />,    text: "Customer support: 0794 448 439 or 0786 023 858 — WhatsApp or call" },
-  { icon: <FiShoppingBag />,   text: "Pay via Mobile Money to 0794 448 439 (SABIRA SSEMATA) only" },
+  { icon: <FiHeadphones />,    text: "Pay via Mobile Money to 0794 448 439 (SABIRA SSEMATA) only" },
 ];
 
 const ticker = [...messages, ...messages];
 
 const AnnouncementBar = () => {
-  const { sellerOpen } = useSiteSettings();
+  useSiteSettings();
 
   return (
   <div className="bg-indigo-700 text-white text-sm py-2 overflow-hidden">
@@ -49,15 +48,7 @@ const AnnouncementBar = () => {
         </div>
       </div>
 
-      {sellerOpen && (
-        <Link
-          to="/trader/register"
-          className="hidden md:flex items-center gap-1.5 flex-shrink-0 bg-white/15 hover:bg-white/25 border border-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
-        >
-          <FiShoppingBag className="text-yellow-300" />
-          Sell with CartPulse
-        </Link>
-      )}
+      {/* sell with cartpulse removed */}
     </div>
   </div>
   );

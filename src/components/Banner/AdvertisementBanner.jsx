@@ -3,9 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiArrowRight, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import api from "../../services/api";
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+import { toAbsolute } from "../../utils/imageUrl";
 
 const SLIDE_INTERVAL = 5000;
 
@@ -100,7 +98,11 @@ const AdvertisementBanner = () => {
             >
               {/* Category badge */}
               <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm text-white/80 mb-5">
-                <span className="text-base">{slide.icon || "📦"}</span>
+                {slide.image ? (
+                  <img src={toAbsolute(slide.image)} alt={slide.name} className="w-5 h-5 rounded-full object-cover" />
+                ) : (
+                  <span className="text-base">{slide.icon || "📦"}</span>
+                )}
                 <span className="font-medium">{slide.name}</span>
               </div>
 

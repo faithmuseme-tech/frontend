@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import adminService from "../../../services/adminService";
-import { FiUsers, FiToggleLeft, FiToggleRight, FiKey, FiCheck, FiX } from "react-icons/fi";
+import { FiUsers, FiToggleLeft, FiToggleRight, FiKey, FiCheck, FiX, FiUser } from "react-icons/fi";
+import { toAbsolute } from "../../../utils/imageUrl";
 
 const TABS = [
   { label: "All", value: "" },
@@ -9,9 +11,11 @@ const TABS = [
 ];
 
 const AdminUsers = () => {
+  const [searchParams] = useSearchParams();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("");
+  const roleParam = searchParams.get("role") || "";
+  const [tab, setTab] = useState(roleParam);
 
   const load = (role) => {
     setLoading(true);
@@ -88,8 +92,19 @@ const AdminUsers = () => {
               {users.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-5 py-3">
-                    <p className="font-semibold text-gray-800">{u.first_name} {u.last_name}</p>
-                    <p className="text-xs text-gray-400">{u.email}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0">
+                        {u.avatar
+                          ? <img src={toAbsolute(u.avatar)} alt={u.first_name} className="w-full h-full object-cover" />
+                          : u.first_name
+                            ? <span className="text-xs font-bold text-indigo-500">{u.first_name[0]}{u.last_name?.[0] || ""}</span>
+                            : <FiUser className="text-indigo-400" />}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-800">{u.first_name} {u.last_name}</p>
+                        <p className="text-xs text-gray-400">{u.email}</p>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-5 py-3 hidden sm:table-cell">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full

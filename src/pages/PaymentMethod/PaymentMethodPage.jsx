@@ -2,69 +2,8 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { FiPhone, FiDollarSign, FiInfo, FiArrowRight } from "react-icons/fi";
 
-const METHODS = [
-  {
-    id: "mtn",
-    label: "MTN Mobile Money",
-    number: "0794 448 439",
-    name: "SABIRA SSEMATA",
-    hint: "Dial *165# → Send Money → Enter number → Enter amount → Confirm.",
-    bg: "bg-yellow-50 border-yellow-300",
-    badge: "bg-yellow-400 text-white",
-    icon: (
-      <svg viewBox="0 0 44 44" className="w-10 h-10 flex-shrink-0" fill="none">
-        <circle cx="22" cy="22" r="22" fill="#FFCC00" />
-        <text x="50%" y="56%" dominantBaseline="middle" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#1a1a1a">MTN</text>
-      </svg>
-    ),
-  },
-  {
-    id: "airtel",
-    label: "Airtel Money",
-    number: "0752 448 439",
-    name: "SABIRA SSEMATA",
-    hint: "Dial *185# → Send Money → Enter number → Enter amount → Confirm.",
-    bg: "bg-red-50 border-red-300",
-    badge: "bg-red-500 text-white",
-    icon: (
-      <svg viewBox="0 0 44 44" className="w-10 h-10 flex-shrink-0" fill="none">
-        <circle cx="22" cy="22" r="22" fill="#E40000" />
-        <text x="50%" y="56%" dominantBaseline="middle" textAnchor="middle" fontSize="9" fontWeight="bold" fill="white">AIRTEL</text>
-      </svg>
-    ),
-  },
-  {
-    id: "bank",
-    label: "Bank Transfer",
-    number: "9030012345678",
-    name: "SABIRA SSEMATA",
-    hint: "Transfer to our Stanbic Bank account, then send proof of payment via WhatsApp to 0794 448 439.",
-    extra: "Stanbic Bank Uganda",
-    bg: "bg-blue-50 border-blue-300",
-    badge: "bg-blue-600 text-white",
-    icon: (
-      <svg viewBox="0 0 44 44" className="w-10 h-10 flex-shrink-0" fill="none">
-        <circle cx="22" cy="22" r="22" fill="#0033A0" />
-        <text x="50%" y="56%" dominantBaseline="middle" textAnchor="middle" fontSize="9" fontWeight="bold" fill="white">BANK</text>
-      </svg>
-    ),
-  },
-  {
-    id: "cod",
-    label: "Cash on Delivery",
-    number: null,
-    name: null,
-    hint: "Pay with cash when your order arrives at your door or when you pick it up at our Fort Portal station. Please have the exact amount ready.",
-    bg: "bg-green-50 border-green-300",
-    badge: "bg-green-600 text-white",
-    icon: (
-      <svg viewBox="0 0 44 44" className="w-10 h-10 flex-shrink-0" fill="none">
-        <circle cx="22" cy="22" r="22" fill="#16a34a" />
-        <text x="50%" y="58%" dominantBaseline="middle" textAnchor="middle" fontSize="20" fill="white">💵</text>
-      </svg>
-    ),
-  },
-];
+const MOMO_NUMBER = "+256 794 448 439";
+const MOMO_NAME = "SABIRA SSEMATA";
 
 const PaymentMethodPage = () => (
   <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
@@ -80,37 +19,49 @@ const PaymentMethodPage = () => (
       </div>
     </div>
 
-    {/* Method cards */}
-    <div className="space-y-4">
-      {METHODS.map((m) => (
-        <div key={m.id} className={`rounded-2xl border p-5 ${m.bg}`}>
-          <div className="flex items-start gap-4">
-            {m.icon}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-base font-extrabold text-gray-900">{m.label}</p>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${m.badge}`}>Accepted</span>
-              </div>
-
-              {m.number && (
-                <div className="mt-2 flex items-center gap-2">
-                  <FiPhone className="text-gray-500 flex-shrink-0" size={14} />
-                  <span className="text-lg font-bold text-gray-900 tracking-wide">{m.number}</span>
-                </div>
-              )}
-              {m.name && (
-                <p className="text-sm text-gray-600 mt-0.5 font-semibold">{m.name}{m.extra ? ` · ${m.extra}` : ""}</p>
-              )}
-
-              <div className="mt-3 flex items-start gap-2 bg-white/60 rounded-xl px-3 py-2.5">
-                <FiInfo className="text-gray-400 flex-shrink-0 mt-0.5" size={13} />
-                <p className="text-xs text-gray-600">{m.hint}</p>
-              </div>
-            </div>
+    {/* MTN MoMo card */}
+    <div className="rounded-2xl border bg-yellow-50 border-yellow-300 p-5">
+      <div className="flex items-start gap-4">
+        <img src="https://res.cloudinary.com/d5qqtsou/image/upload/v1785425025/MTN_MoMo_irikay.jpg" alt="MTN MoMo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-base font-extrabold text-gray-900">MTN Mobile Money</p>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-yellow-400 text-white">Accepted</span>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <FiPhone className="text-gray-500 flex-shrink-0" size={14} />
+            <span className="text-lg font-bold text-gray-900 tracking-wide">{MOMO_NUMBER}</span>
+          </div>
+          <p className="text-sm text-gray-600 mt-0.5 font-semibold">{MOMO_NAME}</p>
+          <div className="mt-3 flex items-start gap-2 bg-white/60 rounded-xl px-3 py-2.5">
+            <FiInfo className="text-gray-400 flex-shrink-0 mt-0.5" size={13} />
+            <p className="text-xs text-gray-600">Dial <strong>*165#</strong> → Send Money → Enter number → Enter amount → On the <strong>Reference/Reason</strong> field, enter <strong>your full name</strong> → Confirm.</p>
           </div>
         </div>
-      ))}
+      </div>
     </div>
+
+    {/* Airtel users note */}
+    <div className="rounded-2xl border bg-red-50 border-red-200 p-5">
+      <div className="flex items-start gap-4">
+        <img src="https://res.cloudinary.com/d5qqtsou/image/upload/v1785425176/Airtel_Money_fgicyp.png" alt="Airtel Money" className="w-10 h-10 rounded-xl object-contain flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-base font-extrabold text-gray-900">Airtel Money Users</p>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-500 text-white">Supported</span>
+          </div>
+          <div className="mt-3 flex items-start gap-2 bg-white/60 rounded-xl px-3 py-2.5">
+            <FiInfo className="text-gray-400 flex-shrink-0 mt-0.5" size={13} />
+            <p className="text-xs text-gray-600">
+              You can send money directly to our MTN number <strong>{MOMO_NUMBER}</strong> from your Airtel account.
+              Dial <strong>*185#</strong> → Send Money → Enter the MTN number → Enter amount → On the <strong>Reference/Reason</strong> field, enter <strong>your full name</strong> → Confirm.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
 
     {/* How to pay link */}
     <Link

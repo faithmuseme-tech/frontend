@@ -2,6 +2,7 @@ import api from "./api";
 
 const adminService = {
   getStats: () => api.get("/admin/stats/"),
+  getAnalytics: () => api.get("/admin/analytics/"),
 
   getUsers: (role) => api.get("/admin/users/", { params: role ? { role } : {} }),
   updateUser: (id, data) => api.patch(`/admin/users/${id}/`, data),
@@ -11,6 +12,7 @@ const adminService = {
   deleteTrader: (id) => api.post(`/admin/traders/${id}/action/`, { action: 'delete' }),
 
   getOrders: (status) => api.get("/admin/orders/", { params: status ? { status } : {} }),
+  getOrder: (id) => api.get(`/admin/orders/${id}/`),
   updateOrder: (id, data) => api.patch(`/admin/orders/${id}/`, data),
   updateOrderStatus: (id, status) => api.post(`/admin/orders/${id}/status/`, { status }),
   getOrderByNumber: (orderNumber) => api.get(`/admin/orders/lookup/`, { params: { order_number: orderNumber } }),
@@ -36,6 +38,21 @@ const adminService = {
 
   getSettings: () => api.get("/admin/settings/"),
   updateSettings: (data) => api.patch("/admin/settings/", data),
+
+  getInquiries: (status) => api.get("/contact/admin/inquiries/", { params: status ? { status } : {} }),
+  updateInquiry: (id, data) => api.patch(`/contact/admin/inquiries/${id}/`, data),
+  deleteInquiry: (id) => api.delete(`/contact/admin/inquiries/${id}/`),
+
+  getReturns: (status) => api.get("/orders/admin/returns/", { params: status ? { status } : {} }),
+  updateReturn: (id, data) => api.patch(`/orders/admin/returns/${id}/`, data),
+
+  getInsights: () => api.get("/insights/"),
+
+  getEmployees: () => api.get("/admin/employees/"),
+  addEmployee: (data) => api.post("/admin/employees/", data),
+  updateEmployee: (id, data) => api.patch(`/admin/employees/${id}/`, data),
+  deleteEmployee: (id) => api.delete(`/admin/employees/${id}/`),
+  employeeSetPassword: (data) => api.post("/admin/employees/set-password/", data),
 };
 
 export default adminService;

@@ -14,6 +14,7 @@ import PromoBanner from "../../components/Banner/PromoBanner";
 import AdvertisementBanner from "../../components/Banner/AdvertisementBanner";
 
 import productService from "../../services/productService";
+import { toAbsolute } from "../../utils/imageUrl";
 import {
   categories as mockCategories,
   featuredProducts as mockFeatured,
@@ -60,10 +61,14 @@ const Section = ({ title, subtitle, to, toLabel = "View All", children, dark = f
 
 const FALLBACK_AVATAR = "https://ui-avatars.com/api/?background=random&size=80&name=";
 
+const TESTIMONIAL_INTERVAL = 4000;
+const VISIBLE_DESKTOP = 4;
+
 const TestimonialsSection = () => {
   const [idx, setIdx] = useState(0);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [resetKey, setResetKey] = useState(0);
 
   useEffect(() => {
     fetch(`${process.env.REACT_APP_API_URL}/reviews/recent/?limit=8`)
@@ -85,7 +90,22 @@ const TestimonialsSection = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (reviews.length < 2) return;
+    const t = setInterval(() => setIdx((p) => (p + 1) % reviews.length), TESTIMONIAL_INTERVAL);
+    return () => clearInterval(t);
+  }, [reviews.length, resetKey]);
+
+  const goTo = (i) => { setIdx(i); setResetKey((k) => k + 1); };
+  const prev = () => goTo((idx - 1 + reviews.length) % reviews.length);
+  const next = () => goTo((idx + 1) % reviews.length);
+
   if (loading || !reviews.length) return null;
+
+  // Desktop: show VISIBLE_DESKTOP cards starting from idx (wrapping)
+  const desktopCards = Array.from({ length: Math.min(VISIBLE_DESKTOP, reviews.length) }, (_, i) =>
+    reviews[(idx + i) % reviews.length]
+  );
 
   return (
     <section className="py-14 bg-gradient-to-br from-primary-50 to-blue-50">
@@ -94,25 +114,51 @@ const TestimonialsSection = () => {
           <h2 className="section-title">What Our Customers Say</h2>
           <p className="section-subtitle">Real reviews from our verified buyers</p>
         </div>
-        <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {reviews.map((t) => (
-            <motion.div key={t.id} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-              <TestimonialCard testimonial={t} />
-            </motion.div>
-          ))}
-        </div>
-        <div className="md:hidden">
-          <TestimonialCard testimonial={reviews[idx]} />
-          <div className="flex items-center justify-center gap-4 mt-5">
-            <button onClick={() => setIdx((p) => Math.max(0, p - 1))} disabled={idx === 0} className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 disabled:opacity-30 hover:bg-gray-100 transition-colors">
+
+        {/* Desktop carousel */}
+        <div className="hidden md:block">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {desktopCards.map((t) => (
+              <motion.div
+                key={t.id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+              >
+                <TestimonialCard testimonial={t} />
+              </motion.div>
+            ))}
+          </div>
+          <div className="flex items-center justify-center gap-3 mt-6">
+            <button onClick={prev} className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors">
               <FiChevronLeft />
             </button>
             <div className="flex gap-1.5">
               {reviews.map((_, i) => (
-                <button key={i} onClick={() => setIdx(i)} className={`w-2 h-2 rounded-full transition-colors ${i === idx ? "bg-primary-600" : "bg-gray-300"}`} />
+                <button key={i} onClick={() => goTo(i)} className={`w-2 h-2 rounded-full transition-colors ${i === idx ? "bg-primary-600" : "bg-gray-300"}`} />
               ))}
             </div>
-            <button onClick={() => setIdx((p) => Math.min(reviews.length - 1, p + 1))} disabled={idx === reviews.length - 1} className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 disabled:opacity-30 hover:bg-gray-100 transition-colors">
+            <button onClick={next} className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors">
+              <FiChevronRight />
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile carousel */}
+        <div className="md:hidden">
+          <motion.div key={reviews[idx].id} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.35 }}>
+            <TestimonialCard testimonial={reviews[idx]} />
+          </motion.div>
+          <div className="flex items-center justify-center gap-4 mt-5">
+            <button onClick={prev} className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors">
+              <FiChevronLeft />
+            </button>
+            <div className="flex gap-1.5">
+              {reviews.map((_, i) => (
+                <button key={i} onClick={() => goTo(i)} className={`w-2 h-2 rounded-full transition-colors ${i === idx ? "bg-primary-600" : "bg-gray-300"}`} />
+              ))}
+            </div>
+            <button onClick={next} className="w-9 h-9 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors">
               <FiChevronRight />
             </button>
           </div>
@@ -121,9 +167,6 @@ const TestimonialsSection = () => {
     </section>
   );
 };
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
 
 const normalizeProduct = (p) => ({
   id: p.id,
@@ -145,8 +188,16 @@ const normalizeProduct = (p) => ({
 const useApiData = (fetchFn, fallback, normalize = true) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    const onStockUpdate = () => setRefreshKey((k) => k + 1);
+    window.addEventListener('product-stock-updated', onStockUpdate);
+    return () => window.removeEventListener('product-stock-updated', onStockUpdate);
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
     fetchFn()
       .then((res) => {
         const list = res.data.results || res.data;
@@ -155,7 +206,7 @@ const useApiData = (fetchFn, fallback, normalize = true) => {
       .catch(() => setData(fallback))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshKey]);
 
   return { data: data || fallback, loading };
 };
@@ -184,31 +235,28 @@ const Home = () => {
     .filter((p, i, arr) => arr.findIndex((x) => x.id === p.id) === i);
 
   const fill = (section, size = 8) => {
-    if (section.length >= size) return section.slice(0, size);
-    const pad = dedup(allProducts, new Set(section.map((p) => p.id)))
-      .filter((p) => !usedIds.has(p.id));
-    return [...section, ...pad].slice(0, size);
+    const base = dedup(section, usedIds).slice(0, size);
+    base.forEach((p) => usedIds.add(p.id));
+    if (base.length >= size) return base;
+    const pad = dedup(allProducts, usedIds).slice(0, size - base.length);
+    pad.forEach((p) => usedIds.add(p.id));
+    return [...base, ...pad];
   };
 
-  // 1. Latest Products — no clothing, from new arrivals, padded from global pool
-  const latestRaw = dedup(newArrivals.filter((p) => !isClothing(p)), usedIds);
-  const latest = fill(latestRaw);
-  latest.forEach((p) => usedIds.add(p.id));
+  // 1. Latest Products — no clothing
+  const latest = fill(newArrivals.filter((p) => !isClothing(p)));
 
-  // 2. Featured — exclude already shown, padded
-  const featuredSection = fill(dedup(featured, usedIds));
-  featuredSection.forEach((p) => usedIds.add(p.id));
+  // 2. Featured
+  const featuredSection = fill(featured);
 
-  // 3. New Arrivals scroll row — clothing allowed, exclude already shown, padded
-  const newArrivalsSection = fill(dedup(newArrivals, usedIds));
-  newArrivalsSection.forEach((p) => usedIds.add(p.id));
+  // 3. New Arrivals — clothing allowed
+  const newArrivalsSection = fill(newArrivals);
 
-  // 4. Recommended — exclude already shown, padded
-  const recommendedSection = fill(dedup(recommended, usedIds));
-  recommendedSection.forEach((p) => usedIds.add(p.id));
+  // 4. Recommended
+  const recommendedSection = fill(recommended);
 
-  // 5. Best Sellers — exclude already shown, padded
-  const bestSellersSection = fill(dedup([...bestSellers, ...allProducts], usedIds));
+  // 5. Best Sellers
+  const bestSellersSection = fill([...bestSellers, ...allProducts]);
 
   const renderGrid = (items, loading, eager = false) => (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
@@ -233,7 +281,7 @@ const Home = () => {
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 md:gap-4">
           {catLoading
             ? Array(12).fill(0).map((_, i) => <div key={i} className="card p-5 aspect-square animate-pulse bg-gray-100" />)
-            : categories.map((cat) => <CategoryCard key={cat.id} category={cat} />)
+            : categories.filter((cat) => (cat.product_count ?? 0) > 0).map((cat) => <CategoryCard key={cat.id} category={cat} />)
           }
         </div>
       </Section>

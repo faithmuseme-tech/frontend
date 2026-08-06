@@ -1,5 +1,6 @@
 import React from "react";
-import { FiRefreshCw, FiAlertTriangle, FiClock, FiPhone } from "react-icons/fi";
+import { Link } from "react-router-dom";
+import { FiRefreshCw, FiAlertTriangle, FiClock, FiArrowRight } from "react-icons/fi";
 
 const ReturnsPage = () => (
   <div className="max-w-2xl mx-auto px-4 sm:px-6 py-14 space-y-8">
@@ -36,14 +37,14 @@ const ReturnsPage = () => (
     </div>
 
     <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
-      <div className="flex items-center gap-2 font-bold text-gray-800 mb-2"><FiPhone /> Initiate a Return</div>
-      <p className="text-sm text-gray-600">
-        Contact our customer care on{" "}
-        <a href="https://wa.me/256786023858" className="font-semibold text-indigo-600 hover:underline">0786 023 858</a>
-        {" "}or{" "}
-        <a href="https://wa.me/256794448439" className="font-semibold text-indigo-600 hover:underline">0794 448 439</a>
-        {" "}via WhatsApp or call to start the return process.
-      </p>
+      <div className="flex items-center gap-2 font-bold text-gray-800 mb-2"><FiArrowRight /> Ready to Return?</div>
+      <p className="text-sm text-gray-600 mb-4">If your order meets the return criteria above, submit a return request directly from your account.</p>
+      <Link
+        to="/returns/request"
+        className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors"
+      >
+        <FiRefreshCw /> Request a Return
+      </Link>
     </div>
   </div>
 );

@@ -2,12 +2,15 @@ import React, { Suspense, lazy, Component, useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import MainLayout from "../layouts/MainLayout";
 import TraderLayout from "../layouts/TraderLayout";
+import usePageTracking from "../hooks/usePageTracking";
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [pathname]);
   return null;
 };
+
+const PageTracker = () => { usePageTracking(); return null; };
 
 // Retry lazy import once on ChunkLoadError (stale deploy on GitHub Pages)
 const lazyWithRetry = (importFn) =>
@@ -79,7 +82,14 @@ const BrandsPage         = lazyWithRetry(() => import("../pages/Brands/BrandsPag
 const BrandDetailPage    = lazyWithRetry(() => import("../pages/Brands/BrandDetailPage"));
 const InboxPage          = lazyWithRetry(() => import("../pages/Dashboard/InboxPage"));
 const ChatPage           = lazyWithRetry(() => import("../pages/Dashboard/ChatPage"));
+const AdminAnalytics     = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminAnalytics"));
 const AdminChat          = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminChat"));
+const AdminInquiries     = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminInquiries"));
+const AdminReturns       = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminReturns"));
+const AdminInsights      = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminInsights"));
+const AdminEmployees     = lazyWithRetry(() => import("../pages/Admin/Dashboard/AdminEmployees"));
+const ReturnRequestPage  = lazyWithRetry(() => import("../pages/Returns/ReturnRequestPage"));
+const MyReturnsPage      = lazyWithRetry(() => import("../pages/Returns/MyReturnsPage"));
 const NotFound           = lazyWithRetry(() => import("../pages/NotFound/NotFound"));
 const AboutPage          = lazyWithRetry(() => import("../pages/About/AboutPage"));
 const ContactPage        = lazyWithRetry(() => import("../pages/Contact/ContactPage"));
@@ -90,6 +100,11 @@ const HowToPayPage       = lazyWithRetry(() => import("../pages/HowToPay/HowToPa
 const PrivacyPage        = lazyWithRetry(() => import("../pages/Privacy/PrivacyPage"));
 const TermsPage          = lazyWithRetry(() => import("../pages/Terms/TermsPage"));
 const NewArrivalsPage    = lazyWithRetry(() => import("../pages/NewArrivals/NewArrivalsPage"));
+const CookiePreferencePage = lazyWithRetry(() => import("../pages/CookiePreferences/CookiePreferencePage"));
+const CookieNoticePage     = lazyWithRetry(() => import("../pages/CookieNotice/CookieNoticePage"));
+const HelpPage             = lazyWithRetry(() => import("../pages/Help/HelpPage"));
+const LoyaltyPage          = lazyWithRetry(() => import("../pages/Loyalty/LoyaltyPage"));
+const ProfileSettingsPage  = lazyWithRetry(() => import("../pages/Profile/ProfileSettingsPage"));
 
 const Loader = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
@@ -101,6 +116,7 @@ const AppRoutes = () => (
   <ChunkErrorBoundary>
     <Suspense fallback={<Loader />}>
     <ScrollToTop />
+    <PageTracker />
     <Routes>
       {/* Main store */}
       <Route element={<MainLayout />}>
@@ -128,11 +144,18 @@ const AppRoutes = () => (
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/shipping" element={<ShippingPage />} />
         <Route path="/returns" element={<ReturnsPage />} />
+        <Route path="/returns/request" element={<ReturnRequestPage />} />
+        <Route path="/returns/my-returns" element={<MyReturnsPage />} />
         <Route path="/faqs" element={<FAQsPage />} />
         <Route path="/how-to-pay" element={<HowToPayPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/new-arrivals" element={<NewArrivalsPage />} />
+        <Route path="/cookie-preferences" element={<CookiePreferencePage />} />
+        <Route path="/cookie-notice" element={<CookieNoticePage />} />
+        <Route path="/help" element={<HelpPage />} />
+        <Route path="/loyalty" element={<LoyaltyPage />} />
+        <Route path="/profile/settings" element={<ProfileSettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
 
@@ -158,6 +181,11 @@ const AppRoutes = () => (
         <Route path="categories" element={<AdminCategories />} />
         <Route path="brands" element={<AdminBrands />} />
         <Route path="chat" element={<AdminChat />} />
+        <Route path="inquiries" element={<AdminInquiries />} />
+        <Route path="returns" element={<AdminReturns />} />
+        <Route path="analytics" element={<AdminAnalytics />} />
+        <Route path="insights" element={<AdminInsights />} />
+        <Route path="employees" element={<AdminEmployees />} />
       </Route>
     </Routes>
     </Suspense>

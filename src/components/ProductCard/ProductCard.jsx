@@ -3,8 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiHeart, FiEye } from "react-icons/fi";
 import { useWishlist } from "../../context/WishlistContext";
+import { useCart } from "../../context/CartContext";
 import Rating from "../Rating/Rating";
 import { formatUGX } from "../../utils/currency";
+import { toAbsolute } from "../../utils/imageUrl";
 
 const badgeColors = {
   "Best Seller": "bg-green-500",
@@ -18,6 +20,7 @@ const ProductCard = ({ product, eager = false }) => {
   const { id, name, brand, rating, reviews, price, originalPrice, discount, image, inStock, badge } = product;
   const deliveryCharge = product.deliveryCharge ?? product.delivery_charge ?? 0;
   const { toggle, isWishlisted } = useWishlist();
+  const { items: cartItems } = useCart();
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const slug = product.slug || id;
@@ -32,7 +35,7 @@ const ProductCard = ({ product, eager = false }) => {
 
   const handleWishlist = (e) => {
     e.preventDefault();
-    toggle(product);
+    toggle(product, cartItems);
   };
 
   const handleView = (e) => {
@@ -47,10 +50,10 @@ const ProductCard = ({ product, eager = false }) => {
         <div className="relative overflow-hidden bg-gray-50 rounded-t-2xl aspect-square">
           {!imgLoaded && <div className="absolute inset-0 bg-gray-200 animate-pulse rounded-t-2xl" />}
           <img
-            src={image}
+            src={toAbsolute(image)}
             alt={name}
             loading={eager ? "eager" : "lazy"}
-            fetchpriority={eager ? "high" : "auto"}
+            fetchPriority={eager ? "high" : "auto"}
             onLoad={() => setImgLoaded(true)}
             className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${imgLoaded ? "opacity-100" : "opacity-0"}`}
           />

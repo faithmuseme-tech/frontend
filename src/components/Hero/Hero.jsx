@@ -4,9 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FiArrowRight, FiCpu, FiChevronLeft, FiChevronRight, FiShoppingCart, FiStar } from "react-icons/fi";
 import { formatUGX } from "../../utils/currency";
 import api from "../../services/api";
-
-const API_BASE = process.env.REACT_APP_API_URL?.replace("/api/v1", "") || "http://127.0.0.1:8000";
-const toAbsolute = (url) => (!url ? "" : url.startsWith("http") ? url : `${API_BASE}${url}`);
+import { toAbsolute } from "../../utils/imageUrl";
 
 const SLIDE_INTERVAL = 3500;
 
@@ -14,6 +12,7 @@ const Hero = () => {
   const [slides, setSlides] = useState([]);
   const [idx, setIdx] = useState(0);
   const [direction, setDirection] = useState(1);
+  const [resetKey, setResetKey] = useState(0);
 
   useEffect(() => {
     api.get("/products/best-sellers/")
@@ -36,16 +35,17 @@ const Hero = () => {
       .catch(() => {});
   }, []);
 
-  const go = useCallback((dir) => {
+  const go = useCallback((dir, manual = false) => {
     setDirection(dir);
     setIdx((prev) => (prev + dir + slides.length) % slides.length);
+    if (manual) setResetKey((k) => k + 1);
   }, [slides.length]);
 
   useEffect(() => {
     if (slides.length < 2) return;
     const t = setInterval(() => go(1), SLIDE_INTERVAL);
     return () => clearInterval(t);
-  }, [slides.length, go]);
+  }, [slides.length, go, resetKey]);
 
   const variants = {
     enter: (d) => ({ x: d > 0 ? 80 : -80, opacity: 0 }),
@@ -54,19 +54,12 @@ const Hero = () => {
   };
 
   return (
-    <section className="relative overflow-hidden bg-gradient-to-br from-primary-900 via-primary-800 to-blue-900 min-h-[88vh] flex items-center">
+    <section className="relative overflow-hidden bg-white min-h-[88vh] flex items-center">
       {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-primary-500/20 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-3xl" />
-        <div
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
-            backgroundSize: "50px 50px",
-          }}
-        />
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-primary-100/60 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-100/60 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-50/80 rounded-full blur-3xl" />
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-24 w-full">
@@ -78,7 +71,7 @@ const Hero = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-2 text-sm text-blue-200 mb-6"
+              className="inline-flex items-center gap-2 bg-primary-50 border border-primary-200 rounded-full px-4 py-2 text-sm text-primary-700 mb-6"
             >
               <FiCpu className="text-accent-400" />
               <span>New IoT components every week — Build your next project</span>
@@ -88,7 +81,7 @@ const Hero = () => {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
-              className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white leading-tight"
+              className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight"
             >
               Build Smarter
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-accent-400 to-yellow-300">
@@ -101,7 +94,7 @@ const Hero = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="mt-6 text-lg text-blue-200 leading-relaxed max-w-lg"
+              className="mt-6 text-lg text-gray-600 leading-relaxed max-w-lg"
             >
               Everything students need — Arduino, Raspberry Pi, sensors, modules, and components. Turn your ideas into real IoT projects with fast delivery right to campus.
             </motion.p>
@@ -117,7 +110,7 @@ const Hero = () => {
               </Link>
               <Link
                 to="/categories"
-                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/30 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200"
+                className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-800 font-semibold px-6 py-3 rounded-xl transition-all duration-200"
               >
                 Browse Projects
               </Link>
@@ -137,8 +130,8 @@ const Hero = () => {
                 { value: "4.9★", label: "Average Rating" },
               ].map((stat) => (
                 <div key={stat.label}>
-                  <div className="text-2xl font-extrabold text-white">{stat.value}</div>
-                  <div className="text-sm text-blue-300">{stat.label}</div>
+                  <div className="text-2xl font-extrabold text-gray-900">{stat.value}</div>
+                  <div className="text-sm text-gray-500">{stat.label}</div>
                 </div>
               ))}
             </motion.div>
@@ -160,7 +153,7 @@ const Hero = () => {
                   alt="Arduino Mega — IoT project component"
                   className="relative rounded-3xl shadow-2xl w-full object-cover"
                   loading="eager"
-                  fetchpriority="high"
+                  fetchPriority="high"
                 />
               </div>
             ) : (
@@ -169,7 +162,7 @@ const Hero = () => {
                 <div className="absolute inset-0 bg-gradient-to-r from-primary-500/30 to-blue-400/30 rounded-3xl blur-2xl scale-110 pointer-events-none" />
 
                 {/* Card */}
-                <div className="relative bg-white/10 backdrop-blur-md border border-white/20 rounded-3xl overflow-hidden shadow-2xl">
+                <div className="relative bg-white border border-gray-200 rounded-3xl overflow-hidden shadow-2xl">
 
                   {/* Ad label */}
                   <div className="absolute top-4 left-4 z-10 bg-accent-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">
@@ -182,7 +175,7 @@ const Hero = () => {
                   </div>
 
                   {/* Image */}
-                  <div className="relative h-64 overflow-hidden bg-white/5">
+                  <div className="relative h-64 overflow-hidden bg-white">
                     <AnimatePresence custom={direction} mode="wait">
                       <motion.img
                         key={slides[idx].id}
@@ -195,7 +188,7 @@ const Hero = () => {
                         src={slides[idx].image}
                         alt={slides[idx].name}
                         loading={idx === 0 ? "eager" : "lazy"}
-                        fetchpriority={idx === 0 ? "high" : "auto"}
+                        fetchPriority={idx === 0 ? "high" : "auto"}
                         className="absolute inset-0 w-full h-full object-contain p-6"
                       />
                     </AnimatePresence>
@@ -216,7 +209,7 @@ const Hero = () => {
                           {slides[idx].badge}
                         </span>
                       )}
-                      <p className="text-white font-bold text-lg leading-tight line-clamp-2">
+                      <p className="text-gray-900 font-bold text-lg leading-tight line-clamp-2">
                         {slides[idx].name}
                       </p>
 
@@ -224,17 +217,17 @@ const Hero = () => {
                       {slides[idx].rating > 0 && (
                         <div className="flex items-center gap-1.5 mt-1.5">
                           <FiStar className="text-yellow-400 text-xs fill-yellow-400" />
-                          <span className="text-yellow-300 text-xs font-semibold">{slides[idx].rating}</span>
-                          <span className="text-blue-300 text-xs">({slides[idx].reviews} reviews)</span>
+                          <span className="text-yellow-600 text-xs font-semibold">{slides[idx].rating}</span>
+                          <span className="text-gray-500 text-xs">({slides[idx].reviews} reviews)</span>
                         </div>
                       )}
 
                       {/* Price + CTA */}
                       <div className="flex items-center justify-between mt-4">
                         <div>
-                          <span className="text-white font-extrabold text-xl">{formatUGX(slides[idx].price)}</span>
+                          <span className="text-gray-900 font-extrabold text-xl">{formatUGX(slides[idx].price)}</span>
                           {slides[idx].original_price && (
-                            <span className="ml-2 text-blue-300 text-sm line-through">{formatUGX(slides[idx].original_price)}</span>
+                            <span className="ml-2 text-gray-400 text-sm line-through">{formatUGX(slides[idx].original_price)}</span>
                           )}
                           {slides[idx].discount > 0 && (
                             <span className="ml-2 bg-green-500/20 text-green-300 text-xs font-bold px-2 py-0.5 rounded-full">
@@ -254,14 +247,14 @@ const Hero = () => {
 
                   {/* Prev / Next */}
                   <button
-                    onClick={() => go(-1)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/30 hover:bg-black/50 text-white rounded-full flex items-center justify-center transition-colors z-10"
+                    onClick={() => go(-1, true)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full flex items-center justify-center transition-colors z-10"
                   >
                     <FiChevronLeft />
                   </button>
                   <button
-                    onClick={() => go(1)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/30 hover:bg-black/50 text-white rounded-full flex items-center justify-center transition-colors z-10"
+                    onClick={() => go(1, true)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full flex items-center justify-center transition-colors z-10"
                   >
                     <FiChevronRight />
                   </button>
@@ -272,8 +265,8 @@ const Hero = () => {
                   {slides.map((_, i) => (
                     <button
                       key={i}
-                      onClick={() => { setDirection(i > idx ? 1 : -1); setIdx(i); }}
-                      className={`h-1.5 rounded-full transition-all duration-300 ${i === idx ? "w-6 bg-accent-400" : "w-1.5 bg-white/30"}`}
+                      onClick={() => { setDirection(i > idx ? 1 : -1); setIdx(i); setResetKey((k) => k + 1); }}
+                      className={`h-1.5 rounded-full transition-all duration-300 ${i === idx ? "w-6 bg-primary-600" : "w-1.5 bg-gray-300"}`}
                     />
                   ))}
                 </div>
@@ -286,7 +279,7 @@ const Hero = () => {
       {/* Wave bottom */}
       <div className="absolute bottom-0 left-0 right-0">
         <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M0 60L1440 60L1440 20C1200 60 960 0 720 20C480 40 240 0 0 20L0 60Z" fill="white" />
+          <path d="M0 60L1440 60L1440 20C1200 60 960 0 720 20C480 40 240 0 0 20L0 60Z" fill="#f9fafb" />
         </svg>
       </div>
     </section>
